@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CodexBar.Core\CodexBar.Core.csproj" />
+    <ProjectReference Include="..\CodexBar.CodexCompat\CodexBar.CodexCompat.csproj" />
+  </ItemGroup>
+</Project>

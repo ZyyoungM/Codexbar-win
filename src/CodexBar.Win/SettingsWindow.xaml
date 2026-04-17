@@ -1,0 +1,76 @@
+<Window x:Class="CodexBar.Win.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CodexBar &#x8BBE;&#x7F6E;"
+        Width="700"
+        Height="720"
+        MinWidth="520"
+        MinHeight="420"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize"
+        ShowInTaskbar="True"
+        Topmost="False">
+  <Border Padding="16">
+    <DockPanel LastChildFill="True">
+      <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+        <Button Content="&#x53D6;&#x6D88;" Width="72" Margin="0,0,8,0" Click="Cancel_Click" />
+        <Button Content="&#x4FDD;&#x5B58;" Width="72" Click="Save_Click" />
+      </StackPanel>
+
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <TextBlock Text="&#x8BBE;&#x7F6E;" FontWeight="Bold" FontSize="18" />
+          <TextBlock Text="&#x8FD9;&#x662F;&#x4E34;&#x65F6;&#x7684;&#x6D4B;&#x8BD5;&#x9762;&#x677F;&#x3002;&#x8FD9;&#x4E9B;&#x63A7;&#x4EF6;&#x4F1A;&#x628A;&#x5E94;&#x7528;&#x914D;&#x7F6E;&#x5199;&#x5165;&#x4F60;&#x7528;&#x6237;&#x76EE;&#x5F55;&#x4E0B;&#x7684; .codexbar&#xFF1B;&#x771F;&#x6B63;&#x4F5C;&#x4E3A; Codex &#x6FC0;&#x6D3B;&#x6001;&#x7684;&#x4ECD;&#x7136;&#x53EA;&#x662F; config.toml &#x548C; auth.json&#x3002;"
+                     TextWrapping="Wrap"
+                     Margin="0,8,0,12" />
+
+          <TextBlock Text="&#x8DEF;&#x5F84;" FontWeight="SemiBold" Margin="0,8,0,6" />
+          <TextBlock x:Name="PathsText" TextWrapping="Wrap" Margin="0,0,0,10" />
+
+          <TextBlock Text="&#x8D26;&#x53F7;&#x6392;&#x5E8F;&#x65B9;&#x5F0F;" />
+          <ComboBox x:Name="AccountSortModeBox" Width="240" HorizontalAlignment="Left" Margin="0,2,0,10" />
+
+          <TextBlock Text="&#x6FC0;&#x6D3B;&#x540E;&#x884C;&#x4E3A;" />
+          <ComboBox x:Name="ActivationBehaviorBox" Width="240" HorizontalAlignment="Left" Margin="0,2,0,10" />
+
+          <TextBlock Text="OpenAI &#x8D26;&#x53F7;&#x6A21;&#x5F0F;" />
+          <ComboBox x:Name="OpenAiAccountModeBox" Width="240" HorizontalAlignment="Left" Margin="0,2,0,14" />
+
+          <TextBlock Text="Codex Desktop &#x8DEF;&#x5F84;" />
+          <DockPanel Margin="0,2,0,8">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0">
+              <Button Content="&#x6D4F;&#x89C8;" Width="72" Margin="0,0,6,0" Click="BrowseDesktop_Click" />
+              <Button Content="&#x63A2;&#x6D4B;" Width="72" Click="DetectDesktop_Click" />
+            </StackPanel>
+            <TextBox x:Name="CodexDesktopPathBox" />
+          </DockPanel>
+
+          <TextBlock Text="Codex CLI &#x8DEF;&#x5F84;" />
+          <DockPanel Margin="0,2,0,8">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0">
+              <Button Content="&#x6D4F;&#x89C8;" Width="72" Margin="0,0,6,0" Click="BrowseCli_Click" />
+              <Button Content="&#x63A2;&#x6D4B;" Width="72" Click="DetectCli_Click" />
+            </StackPanel>
+            <TextBox x:Name="CodexCliPathBox" />
+          </DockPanel>
+          <TextBlock x:Name="DetectionText" TextWrapping="Wrap" Margin="0,0,0,14" />
+          <Button Content="&#x6D4B;&#x8BD5;&#x542F;&#x52A8; Codex"
+                  Width="140"
+                  HorizontalAlignment="Left"
+                  Margin="0,0,0,14"
+                  Click="LaunchCodex_Click" />
+
+          <TextBlock Text="&#x8D26;&#x53F7; CSV" FontWeight="SemiBold" Margin="0,8,0,6" />
+          <CheckBox x:Name="IncludeSecretsBox" Content="&#x5BFC;&#x51FA; CSV &#x65F6;&#x5305;&#x542B;&#x5BC6;&#x94A5;" Margin="0,0,0,8" />
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+            <Button Content="&#x5BFC;&#x51FA;&#x8D26;&#x53F7;" Width="120" Margin="0,0,8,0" Click="ExportAccounts_Click" />
+            <Button Content="&#x5BFC;&#x5165;&#x8D26;&#x53F7;" Width="120" Click="ImportAccounts_Click" />
+          </StackPanel>
+
+          <CheckBox x:Name="StartupBox" Content="&#x767B;&#x5F55; Windows &#x65F6;&#x81EA;&#x52A8;&#x542F;&#x52A8; CodexBar" Margin="0,8,0,12" />
+          <TextBlock x:Name="StatusText" Foreground="#555555" TextWrapping="Wrap" />
+        </StackPanel>
+      </ScrollViewer>
+    </DockPanel>
+  </Border>
+</Window>

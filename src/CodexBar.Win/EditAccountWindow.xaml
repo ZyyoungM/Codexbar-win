@@ -1,0 +1,50 @@
+<Window x:Class="CodexBar.Win.EditAccountWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="&#x7F16;&#x8F91;&#x8D26;&#x53F7;"
+        Width="440"
+        Height="420"
+        MinWidth="380"
+        MinHeight="320"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="SingleBorderWindow"
+        ResizeMode="CanResize"
+        ShowInTaskbar="True">
+  <Border Padding="16">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel>
+        <TextBlock Text="Provider ID" />
+        <TextBox x:Name="ProviderIdBox" IsReadOnly="True" Margin="0,2,0,10" />
+        <TextBlock Text="Provider &#x540D;&#x79F0;" />
+        <TextBox x:Name="ProviderNameBox" Margin="0,2,0,10" />
+        <TextBlock x:Name="BaseUrlLabel" Text="Base URL" />
+        <TextBox x:Name="BaseUrlBox" Margin="0,2,0,10" />
+        <TextBlock Text="&#x8D26;&#x53F7; ID" />
+        <TextBox x:Name="AccountIdBox" IsReadOnly="True" Margin="0,2,0,10" />
+        <TextBlock Text="&#x8D26;&#x53F7;&#x663E;&#x793A;&#x540D;" />
+        <TextBox x:Name="AccountLabelBox" Margin="0,2,0,10" />
+        <StackPanel x:Name="OfficialUsagePanel" Visibility="Collapsed" Margin="0,0,0,10">
+          <TextBlock Text="OpenAI &#x5B98;&#x65B9;&#x5957;&#x9910;" />
+          <TextBox x:Name="OfficialPlanBox" IsReadOnly="True" Margin="0,2,0,10" />
+          <TextBlock Text="&#x5B98;&#x65B9; 5 &#x5C0F;&#x65F6;&#x5269;&#x4F59;&#x989D;&#x5EA6;" />
+          <TextBox x:Name="FiveHourQuotaBox" IsReadOnly="True" Margin="0,2,0,10" />
+          <TextBlock Text="&#x5B98;&#x65B9;&#x5F53;&#x5468;&#x5269;&#x4F59;&#x989D;&#x5EA6;" />
+          <TextBox x:Name="WeeklyQuotaBox" IsReadOnly="True" Margin="0,2,0,10" />
+          <TextBlock Text="&#x5B98;&#x65B9;&#x989D;&#x5EA6;&#x83B7;&#x53D6;&#x72B6;&#x6001;" />
+          <TextBox x:Name="OfficialStatusBox"
+                   IsReadOnly="True"
+                   TextWrapping="Wrap"
+                   AcceptsReturn="True"
+                   MinHeight="72"
+                   Margin="0,2,0,10" />
+        </StackPanel>
+        <TextBlock x:Name="ApiKeyLabel" Text="API Key&#xFF08;&#x7559;&#x7A7A;&#x8868;&#x793A;&#x4FDD;&#x7559;&#x5F53;&#x524D;&#x503C;&#xFF09;" />
+        <PasswordBox x:Name="ApiKeyBox" Margin="0,2,0,12" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button Content="&#x53D6;&#x6D88;" Width="72" Margin="0,0,8,0" Click="Cancel_Click" />
+          <Button Content="&#x4FDD;&#x5B58;" Width="72" Click="Save_Click" />
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </Border>
+</Window>

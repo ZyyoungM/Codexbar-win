@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CodexBar.Core\CodexBar.Core.csproj" />
+    <ProjectReference Include="..\CodexBar.CodexCompat\CodexBar.CodexCompat.csproj" />
+    <ProjectReference Include="..\CodexBar.Auth\CodexBar.Auth.csproj" />
+    <ProjectReference Include="..\CodexBar.Runtime\CodexBar.Runtime.csproj" />
+  </ItemGroup>
+</Project>
