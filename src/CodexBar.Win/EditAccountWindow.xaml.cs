@@ -6,6 +6,8 @@ namespace CodexBar.Win;
 public partial class EditAccountWindow : Window
 {
     private readonly ProviderKind _providerKind;
+    private readonly string _originalProviderId;
+    private readonly string _originalAccountId;
 
     public EditAccountResult? Result { get; private set; }
 
@@ -14,7 +16,10 @@ public partial class EditAccountWindow : Window
         InitializeComponent();
 
         _providerKind = provider.Kind;
+        _originalProviderId = provider.ProviderId;
+        _originalAccountId = account.AccountId;
         ProviderIdBox.Text = provider.ProviderId;
+        CodexProviderIdBox.Text = provider.CodexProviderId ?? (provider.Kind == ProviderKind.OpenAiCompatible ? "openai" : provider.ProviderId);
         ProviderNameBox.Text = provider.DisplayName;
         BaseUrlBox.Text = provider.BaseUrl ?? "";
         AccountIdBox.Text = account.AccountId;
@@ -22,6 +27,8 @@ public partial class EditAccountWindow : Window
 
         if (_providerKind == ProviderKind.OpenAiOAuth)
         {
+            ProviderIdBox.IsReadOnly = true;
+            AdvancedCompatExpander.Visibility = Visibility.Collapsed;
             ProviderNameBox.IsReadOnly = true;
             BaseUrlBox.Visibility = Visibility.Collapsed;
             BaseUrlLabel.Visibility = Visibility.Collapsed;
@@ -37,6 +44,12 @@ public partial class EditAccountWindow : Window
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
+        if (string.IsNullOrWhiteSpace(ProviderIdBox.Text))
+        {
+            System.Windows.MessageBox.Show(this, "\u8BF7\u8F93\u5165 Provider ID\u3002", "CodexBar");
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(AccountLabelBox.Text))
         {
             System.Windows.MessageBox.Show(this, "\u8BF7\u8F93\u5165\u8D26\u53F7\u663E\u793A\u540D\u3002", "CodexBar");
@@ -51,7 +64,10 @@ public partial class EditAccountWindow : Window
         }
 
         Result = new EditAccountResult(
+            _originalProviderId,
+            _originalAccountId,
             ProviderIdBox.Text.Trim(),
+            string.IsNullOrWhiteSpace(CodexProviderIdBox.Text) ? null : CodexProviderIdBox.Text.Trim(),
             AccountIdBox.Text.Trim(),
             ProviderNameBox.Text.Trim(),
             BaseUrlBox.Text.Trim(),
@@ -95,7 +111,10 @@ public partial class EditAccountWindow : Window
 }
 
 public sealed record EditAccountResult(
+    string OriginalProviderId,
+    string OriginalAccountId,
     string ProviderId,
+    string? CodexProviderId,
     string AccountId,
     string ProviderName,
     string BaseUrl,

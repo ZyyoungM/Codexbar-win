@@ -46,7 +46,13 @@ public sealed class CodexLaunchService
         _processLauncher = processLauncher ?? new ExternalProcessLauncher();
     }
 
-    public async Task<CodexLaunchResult> LaunchIfConfiguredAsync(AppSettings settings, CancellationToken cancellationToken = default)
+    public Task<CodexLaunchResult> LaunchIfConfiguredAsync(AppSettings settings, CancellationToken cancellationToken = default)
+        => LaunchIfConfiguredAsync(settings, null, cancellationToken);
+
+    public async Task<CodexLaunchResult> LaunchIfConfiguredAsync(
+        AppSettings settings,
+        IReadOnlyDictionary<string, string>? environmentVariables,
+        CancellationToken cancellationToken = default)
     {
         if (settings.ActivationBehavior != ActivationBehavior.LaunchNewCodex)
         {
@@ -58,21 +64,27 @@ public sealed class CodexLaunchService
             };
         }
 
-        return await LaunchAsync(settings, cancellationToken);
+        return await LaunchAsync(settings, environmentVariables, cancellationToken);
     }
 
-    public async Task<CodexLaunchResult> LaunchAsync(AppSettings settings, CancellationToken cancellationToken = default)
+    public Task<CodexLaunchResult> LaunchAsync(AppSettings settings, CancellationToken cancellationToken = default)
+        => LaunchAsync(settings, null, cancellationToken);
+
+    public async Task<CodexLaunchResult> LaunchAsync(
+        AppSettings settings,
+        IReadOnlyDictionary<string, string>? environmentVariables,
+        CancellationToken cancellationToken = default)
     {
         var desktopPath = _desktopLocator.Locate(settings.CodexDesktopPath);
         if (!string.IsNullOrWhiteSpace(desktopPath))
         {
-            return Start(new CodexLaunchTarget("desktop", desktopPath));
+            return StartDesktop(new CodexLaunchTarget("desktop", desktopPath), environmentVariables);
         }
 
         var cli = await _cliLocator.LocateAsync(settings.CodexCliPath, cancellationToken);
         if (cli is not null)
         {
-            return Start(new CodexLaunchTarget("cli", cli.Path, cli.Version));
+            return Start(new CodexLaunchTarget("cli", cli.Path, cli.Version), environmentVariables);
         }
 
         return new CodexLaunchResult
@@ -83,16 +95,20 @@ public sealed class CodexLaunchService
         };
     }
 
-    private CodexLaunchResult Start(CodexLaunchTarget target)
+    private CodexLaunchResult Start(
+        CodexLaunchTarget target,
+        IReadOnlyDictionary<string, string>? environmentVariables)
     {
         try
         {
+            var hasEnvironmentVariables = environmentVariables is { Count: > 0 };
             var startInfo = new ProcessStartInfo
             {
                 FileName = target.Path,
                 WorkingDirectory = Path.GetDirectoryName(target.Path),
-                UseShellExecute = true
+                UseShellExecute = !hasEnvironmentVariables
             };
+            ApplyEnvironmentVariables(startInfo, environmentVariables);
             _processLauncher.Start(startInfo);
             return new CodexLaunchResult
             {
@@ -113,6 +129,81 @@ public sealed class CodexLaunchService
                 Target = target,
                 Message = DiagnosticLogger.Redact(ex.Message)
             };
+        }
+    }
+
+    private CodexLaunchResult StartDesktop(
+        CodexLaunchTarget target,
+        IReadOnlyDictionary<string, string>? environmentVariables)
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = target.Path,
+                WorkingDirectory = Path.GetDirectoryName(target.Path),
+                UseShellExecute = false
+            };
+            SanitizeDesktopEnvironment(startInfo);
+            ApplyEnvironmentVariables(startInfo, environmentVariables);
+            _processLauncher.Start(startInfo);
+            return new CodexLaunchResult
+            {
+                Attempted = true,
+                Launched = true,
+                Target = target,
+                Message = $"\u5DF2\u542F\u52A8 Codex Desktop\uFF1A{target.Path}"
+            };
+        }
+        catch (Exception ex)
+        {
+            return new CodexLaunchResult
+            {
+                Attempted = true,
+                Launched = false,
+                Target = target,
+                Message = DiagnosticLogger.Redact(ex.Message)
+            };
+        }
+    }
+
+    private static void SanitizeDesktopEnvironment(ProcessStartInfo startInfo)
+    {
+        RemoveEnvironmentVariable(startInfo, "ELECTRON_RUN_AS_NODE");
+        RemoveEnvironmentVariable(startInfo, "NODE_OPTIONS");
+        RemoveEnvironmentVariable(startInfo, "CODEX_INTERNAL_ORIGINATOR_OVERRIDE");
+        RemoveEnvironmentVariable(startInfo, "CODEX_SHELL");
+        RemoveEnvironmentVariable(startInfo, "CODEX_THREAD_ID");
+    }
+
+    private static void ApplyEnvironmentVariables(
+        ProcessStartInfo startInfo,
+        IReadOnlyDictionary<string, string>? environmentVariables)
+    {
+        if (environmentVariables is not { Count: > 0 })
+        {
+            return;
+        }
+
+        foreach (var (name, value) in environmentVariables)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            startInfo.EnvironmentVariables[name] = value;
+        }
+    }
+
+    private static void RemoveEnvironmentVariable(ProcessStartInfo startInfo, string name)
+    {
+        foreach (var key in startInfo.EnvironmentVariables.Keys.Cast<string>().ToList())
+        {
+            if (string.Equals(key, name, StringComparison.OrdinalIgnoreCase))
+            {
+                startInfo.EnvironmentVariables.Remove(key);
+            }
         }
     }
 }

@@ -27,12 +27,16 @@ public partial class AddCompatibleWindow : Window
         var providerName = string.IsNullOrWhiteSpace(ProviderNameBox.Text)
             ? providerId
             : ProviderNameBox.Text.Trim();
+        var codexProviderId = string.IsNullOrWhiteSpace(CodexProviderIdBox.Text)
+            ? null
+            : CodexProviderIdBox.Text.Trim();
         var accountLabel = string.IsNullOrWhiteSpace(AccountLabelBox.Text)
             ? accountId
             : AccountLabelBox.Text.Trim();
 
         Result = new AddCompatibleResult(
             providerId,
+            codexProviderId,
             providerName,
             BaseUrlBox.Text.Trim(),
             accountId,
@@ -47,6 +51,7 @@ public partial class AddCompatibleWindow : Window
 
 public sealed record AddCompatibleResult(
     string ProviderId,
+    string? CodexProviderId,
     string ProviderName,
     string BaseUrl,
     string AccountId,

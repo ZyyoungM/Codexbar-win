@@ -14,17 +14,26 @@ var tests = new (string Name, Func<Task> Run)[]
     ("paths tolerate duplicate environment key casing", DuplicateEnvironmentKeyTest),
     ("toml editor preserves unknown keys", TomlEditorTest),
     ("compatible activation writes only active state", CompatibleActivationTest),
+    ("compatible activation supports custom codex provider alias", CompatibleActivationCustomProviderAliasTest),
+    ("compatible activation preserves oauth identity snapshot", CompatibleActivationPreservesOAuthIdentityTest),
     ("oauth activation writes codex-compatible last_refresh", OAuthActivationWritesLastRefreshTest),
     ("transaction rolls back on validation failure", RollbackTest),
     ("manual callback parser accepts URL and code", ManualCallbackParserTest),
     ("usage scanner reads shared history without writes", UsageScannerTest),
+    ("usage scanner tolerates locked active session files", UsageScannerLockedFileTest),
+    ("compatible provider probe suggests missing v1 path", CompatibleProviderProbeSuggestsV1Test),
     ("usage attribution maps sessions by switch intervals", UsageAttributionTest),
+    ("switch journal renames provider ids", SwitchJournalRenameProviderTest),
     ("aggregate gateway reroutes openai to lower-usage account", AggregateGatewayRerouteTest),
     ("aggregate gateway prefers lower official quota pressure over local history", AggregateGatewayPrefersOfficialQuotaTest),
     ("aggregate gateway leaves manual switch selections unchanged", AggregateGatewayManualModeTest),
     ("aggregate gateway avoids accounts that need reauth when a healthy account exists", AggregateGatewayAvoidsNeedsReauthTest),
+    ("desktop locator prefers desktop inferred from current cli path", DesktopLocatorPrefersCliInferredDesktopTest),
+    ("desktop locator prefers latest packaged Codex version", DesktopLocatorPrefersLatestPackagedVersionTest),
+    ("desktop locator detects packaged Codex without configured path", DesktopLocatorDetectsPackagedVersionWithoutConfiguredPathTest),
     ("launch service skips process start when write only", LaunchServiceWriteOnlyTest),
-    ("launch service starts configured desktop executable", LaunchServiceDesktopTest),
+    ("launch service starts desktop with clean environment", LaunchServiceDesktopTest),
+    ("compatible launch injects active API key", CompatibleLaunchInjectsActiveApiKeyTest),
     ("app config persists manual account order", AppConfigManualOrderTest),
     ("quota formatter shows remaining quota and 5h reset time as hh:mm", QuotaFormatterFiveHourResetTest),
     ("quota formatter shows weekly reset as date unless within 24h", QuotaFormatterWeeklyResetTest),
@@ -164,9 +173,142 @@ static async Task CompatibleActivationTest()
     var configText = await File.ReadAllTextAsync(Path.Combine(codexHome, "config.toml"));
     var authText = await File.ReadAllTextAsync(Path.Combine(codexHome, "auth.json"));
     AssertContains(configText, "unknown = \"preserve\"");
+    AssertContains(configText, "model_provider = \"openai\"");
     AssertContains(configText, "openai_base_url = \"https://example.test/v1\"");
+    AssertDoesNotContain(configText, "[model_providers.openai]");
+    AssertDoesNotContain(configText, "[model_providers.test]");
+    AssertContains(authText, "\"auth_mode\": \"apikey\"");
     AssertContains(authText, "\"OPENAI_API_KEY\": \"sk-test\"");
     AssertEqual("{\"type\":\"message\"}\n", await File.ReadAllTextAsync(sessionPath));
+}
+
+static async Task CompatibleActivationCustomProviderAliasTest()
+{
+    using var temp = TempDir.Create();
+    var codexHome = Path.Combine(temp.Path, ".codex");
+    Directory.CreateDirectory(codexHome);
+    await File.WriteAllTextAsync(Path.Combine(codexHome, "config.toml"), "model = \"old\"\n");
+    await File.WriteAllTextAsync(Path.Combine(codexHome, "auth.json"), "{\"auth_mode\":\"chatgpt\"}\n");
+
+    var appPaths = AppPaths.Resolve(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["USERPROFILE"] = temp.Path
+    });
+    var secrets = new InMemorySecretStore();
+    await secrets.WriteSecretAsync("api-key:test:default", "sk-test");
+    var config = new AppConfig
+    {
+        Providers =
+        [
+            new ProviderDefinition
+            {
+                ProviderId = "test",
+                CodexProviderId = "openai-custom",
+                DisplayName = "Test API",
+                Kind = ProviderKind.OpenAiCompatible,
+                AuthMode = AuthMode.ApiKey,
+                BaseUrl = "https://example.test/v1"
+            }
+        ],
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "test",
+                AccountId = "default",
+                Label = "Default",
+                CredentialRef = "api-key:test:default"
+            }
+        ]
+    };
+
+    var result = await NewActivationService(appPaths, secrets).ActivateAsync(config, new CodexSelection
+    {
+        ProviderId = "test",
+        AccountId = "default"
+    }, new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CODEX_HOME"] = codexHome,
+        ["USERPROFILE"] = temp.Path
+    });
+
+    AssertTrue(result.ValidationPassed, result.Message);
+    var configText = await File.ReadAllTextAsync(Path.Combine(codexHome, "config.toml"));
+    AssertContains(configText, "model_provider = \"openai-custom\"");
+    AssertContains(configText, "[model_providers.openai-custom]");
+    AssertContains(configText, "base_url = \"https://example.test/v1\"");
+    AssertDoesNotContain(configText, "openai_base_url");
+}
+
+static async Task CompatibleActivationPreservesOAuthIdentityTest()
+{
+    using var temp = TempDir.Create();
+    var codexHome = Path.Combine(temp.Path, ".codex");
+    Directory.CreateDirectory(codexHome);
+    var lastRefresh = DateTimeOffset.Parse("2026-04-17T01:00:00Z");
+    await File.WriteAllTextAsync(Path.Combine(codexHome, "config.toml"), "model = \"old\"\n");
+    await File.WriteAllTextAsync(Path.Combine(codexHome, "auth.json"), $$"""
+        {
+          "auth_mode": "chatgpt",
+          "OPENAI_API_KEY": null,
+          "tokens": {
+            "access_token": "keep-access",
+            "refresh_token": "keep-refresh",
+            "id_token": "keep-id",
+            "last_refresh": "{{lastRefresh:O}}"
+          },
+          "last_refresh": "{{lastRefresh:O}}"
+        }
+        """);
+
+    var appPaths = AppPaths.Resolve(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["USERPROFILE"] = temp.Path
+    });
+    var secrets = new InMemorySecretStore();
+    await secrets.WriteSecretAsync("api-key:test:default", "sk-test");
+    var config = new AppConfig
+    {
+        Providers =
+        [
+            new ProviderDefinition
+            {
+                ProviderId = "test",
+                DisplayName = "Test API",
+                Kind = ProviderKind.OpenAiCompatible,
+                AuthMode = AuthMode.ApiKey,
+                BaseUrl = "https://example.test/v1"
+            }
+        ],
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "test",
+                AccountId = "default",
+                Label = "Default",
+                CredentialRef = "api-key:test:default"
+            }
+        ]
+    };
+
+    await NewActivationService(appPaths, secrets).ActivateAsync(config, new CodexSelection
+    {
+        ProviderId = "test",
+        AccountId = "default"
+    }, new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CODEX_HOME"] = codexHome,
+        ["USERPROFILE"] = temp.Path
+    });
+
+    using var auth = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(codexHome, "auth.json")));
+    var root = auth.RootElement;
+    AssertEqual("apikey", root.GetProperty("auth_mode").GetString());
+    AssertEqual("sk-test", root.GetProperty("OPENAI_API_KEY").GetString());
+    AssertTrue(root.TryGetProperty("tokens", out var tokens));
+    AssertEqual("keep-access", tokens.GetProperty("access_token").GetString());
+    AssertEqual(lastRefresh, root.GetProperty("last_refresh").GetDateTimeOffset());
 }
 
 static async Task OAuthActivationWritesLastRefreshTest()
@@ -299,6 +441,75 @@ static async Task UsageScannerTest()
     AssertEqual(1, summary.EventsScanned);
 }
 
+static async Task UsageScannerLockedFileTest()
+{
+    using var temp = TempDir.Create();
+    var codexHome = Path.Combine(temp.Path, ".codex");
+    var sessions = Path.Combine(codexHome, "sessions");
+    Directory.CreateDirectory(sessions);
+    await File.WriteAllTextAsync(Path.Combine(sessions, "readable.jsonl"), "{\"timestamp\":\"2026-04-15T00:00:00Z\",\"usage\":{\"input_tokens\":4,\"output_tokens\":3,\"cached_input_tokens\":1}}\n");
+    var lockedPath = Path.Combine(sessions, "active.jsonl");
+    await File.WriteAllTextAsync(lockedPath, "{\"timestamp\":\"2026-04-15T00:00:00Z\",\"usage\":{\"input_tokens\":100,\"output_tokens\":50,\"cached_input_tokens\":0}}\n");
+
+    using var locked = new FileStream(lockedPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+    var home = new CodexHomeLocator().Resolve(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CODEX_HOME"] = codexHome,
+        ["USERPROFILE"] = temp.Path
+    });
+
+    var summary = await new UsageScanner().ScanAsync(home, DateTimeOffset.Parse("2026-04-01T00:00:00Z"), DateTimeOffset.Parse("2026-04-30T00:00:00Z"));
+    AssertEqual(4L, summary.InputTokens);
+    AssertEqual(3L, summary.OutputTokens);
+    AssertEqual(1L, summary.CachedInputTokens);
+    AssertEqual(1, summary.EventsScanned);
+}
+
+static async Task CompatibleProviderProbeSuggestsV1Test()
+{
+    var secrets = new InMemorySecretStore();
+    await secrets.WriteSecretAsync("api-key:compatible:default", "sk-test");
+    var config = new AppConfig
+    {
+        Providers =
+        [
+            new ProviderDefinition
+            {
+                ProviderId = "compatible",
+                DisplayName = "Compatible",
+                Kind = ProviderKind.OpenAiCompatible,
+                BaseUrl = "https://gateway.example"
+            }
+        ],
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "compatible",
+                AccountId = "default",
+                Label = "Default",
+                CredentialRef = "api-key:compatible:default"
+            }
+        ]
+    };
+
+    var handler = new StubHttpMessageHandler(request =>
+    {
+        AssertEqual("Bearer", request.Headers.Authorization?.Scheme);
+        AssertEqual("sk-test", request.Headers.Authorization?.Parameter);
+        return request.RequestUri?.AbsoluteUri == "https://gateway.example/v1/models"
+            ? new HttpResponseMessage(HttpStatusCode.OK)
+            : new HttpResponseMessage(HttpStatusCode.NotFound);
+    });
+
+    var result = (await new CompatibleProviderProbeService(secrets, new HttpClient(handler))
+        .ProbeAsync(config, config.Accounts)).Single();
+
+    AssertTrue(!result.Success);
+    AssertEqual(404, result.StatusCode);
+    AssertEqual("https://gateway.example/v1", result.SuggestedBaseUrl);
+}
+
 static async Task UsageAttributionTest()
 {
     using var temp = TempDir.Create();
@@ -372,6 +583,29 @@ static async Task UsageAttributionTest()
     AssertEqual(30L, dashboard.Accounts.Single(account => account.AccountId == "b").Last7Days.TotalTokens);
     AssertEqual(15L, dashboard.Accounts.Single(account => account.AccountId == "a").Lifetime.TotalTokens);
     AssertEqual(30L, dashboard.Accounts.Single(account => account.AccountId == "b").Lifetime.TotalTokens);
+}
+
+static async Task SwitchJournalRenameProviderTest()
+{
+    using var temp = TempDir.Create();
+    var path = Path.Combine(temp.Path, "switch-journal.jsonl");
+    var store = new SwitchJournalStore(path);
+    await store.AppendAsync(new CodexSelection
+    {
+        ProviderId = "compatible",
+        AccountId = "default"
+    }, "ok", "Activation written.");
+    await store.AppendAsync(new CodexSelection
+    {
+        ProviderId = "openai",
+        AccountId = "acct"
+    }, "ok", "Activation written.");
+
+    await store.RenameProviderAsync("compatible", "gateway");
+
+    var entries = await store.ReadAllAsync();
+    AssertEqual("gateway", entries[0].Selection.ProviderId);
+    AssertEqual("openai", entries[1].Selection.ProviderId);
 }
 
 static async Task AggregateGatewayRerouteTest()
@@ -638,6 +872,71 @@ static async Task AggregateGatewayAvoidsNeedsReauthTest()
     AssertEqual("healthy", decision.ResolvedSelection.AccountId);
 }
 
+static Task DesktopLocatorPrefersLatestPackagedVersionTest()
+{
+    using var temp = TempDir.Create();
+    var windowsAppsRoot = Path.Combine(temp.Path, "WindowsApps");
+    var oldDesktop = CreateFakeDesktopExecutable(windowsAppsRoot, "OpenAI.Codex_26.409.7971.0_x64__2p2nqsd0c76g0");
+    var newDesktop = CreateFakeDesktopExecutable(windowsAppsRoot, "OpenAI.Codex_26.415.1938.0_x64__2p2nqsd0c76g0");
+    var locator = new CodexDesktopLocator(
+        windowsAppsRoots: [windowsAppsRoot],
+        localAppData: temp.Path,
+        programFiles: Path.Combine(temp.Path, "ProgramFiles"),
+        programFilesX86: Path.Combine(temp.Path, "ProgramFilesX86"),
+        pathEnvironment: string.Empty);
+
+    var located = locator.Locate(oldDesktop);
+
+    AssertEqual(newDesktop, located);
+
+    return Task.CompletedTask;
+}
+
+static Task DesktopLocatorPrefersCliInferredDesktopTest()
+{
+    using var temp = TempDir.Create();
+    var windowsAppsRoot = Path.Combine(temp.Path, "WindowsApps");
+    var staleDesktop = CreateFakeDesktopExecutable(windowsAppsRoot, "OpenAI.Codex_26.409.7971.0_x64__2p2nqsd0c76g0");
+
+    var currentCli = Path.Combine(temp.Path, "current", "app", "resources", "codex.exe");
+    var currentDesktop = Path.Combine(temp.Path, "current", "app", "Codex.exe");
+    Directory.CreateDirectory(Path.GetDirectoryName(currentCli)!);
+    File.WriteAllText(currentCli, "cli");
+    File.WriteAllText(currentDesktop, "desktop");
+    var locator = new CodexDesktopLocator(
+        windowsAppsRoots: Array.Empty<string>(),
+        localAppData: temp.Path,
+        programFiles: Path.Combine(temp.Path, "ProgramFiles"),
+        programFilesX86: Path.Combine(temp.Path, "ProgramFilesX86"),
+        pathEnvironment: Path.GetDirectoryName(currentCli));
+
+    var located = locator.Locate(staleDesktop);
+
+    AssertEqual(currentDesktop, located);
+
+    return Task.CompletedTask;
+}
+
+static Task DesktopLocatorDetectsPackagedVersionWithoutConfiguredPathTest()
+{
+    using var temp = TempDir.Create();
+    var windowsAppsRoot = Path.Combine(temp.Path, "WindowsApps");
+    var latestDesktop = CreateFakeDesktopExecutable(windowsAppsRoot, "OpenAI.Codex_26.415.1938.0_x64__2p2nqsd0c76g0");
+    CreateFakeDesktopExecutable(windowsAppsRoot, "OpenAI.Codex_26.409.7971.0_x64__2p2nqsd0c76g0");
+    var locator = new CodexDesktopLocator(
+        windowsAppsRoots: [windowsAppsRoot],
+        localAppData: temp.Path,
+        programFiles: Path.Combine(temp.Path, "ProgramFiles"),
+        programFilesX86: Path.Combine(temp.Path, "ProgramFilesX86"),
+        pathEnvironment: string.Empty);
+
+    var located = locator.Locate();
+
+    AssertEqual(latestDesktop, located);
+
+    return Task.CompletedTask;
+}
+
 static async Task LaunchServiceWriteOnlyTest()
 {
     var launcher = new FakeProcessLauncher();
@@ -655,19 +954,87 @@ static async Task LaunchServiceWriteOnlyTest()
 static async Task LaunchServiceDesktopTest()
 {
     var currentExe = Environment.ProcessPath ?? throw new Exception("Current process path is unavailable.");
+    Environment.SetEnvironmentVariable("ELECTRON_RUN_AS_NODE", "1");
+    Environment.SetEnvironmentVariable("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", "Codex Desktop");
+    Environment.SetEnvironmentVariable("CODEX_SHELL", "1");
+    Environment.SetEnvironmentVariable("CODEX_THREAD_ID", "test-thread");
     var launcher = new FakeProcessLauncher();
     var service = new CodexLaunchService(processLauncher: launcher);
-    var result = await service.LaunchIfConfiguredAsync(new AppSettings
+    try
     {
-        ActivationBehavior = ActivationBehavior.LaunchNewCodex,
-        CodexDesktopPath = currentExe
-    });
+        var result = await service.LaunchIfConfiguredAsync(new AppSettings
+        {
+            ActivationBehavior = ActivationBehavior.LaunchNewCodex,
+            CodexDesktopPath = currentExe
+        });
 
-    AssertTrue(result.Attempted);
+        var startInfo = launcher.StartCalls.Single();
+        AssertTrue(result.Attempted);
+        AssertTrue(result.Launched, result.Message);
+        AssertEqual("desktop", result.Target?.Kind);
+        AssertEqual(currentExe, startInfo.FileName);
+        AssertTrue(!startInfo.UseShellExecute);
+        AssertTrue(!HasEnvironmentVariable(startInfo, "ELECTRON_RUN_AS_NODE"));
+        AssertTrue(!HasEnvironmentVariable(startInfo, "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"));
+        AssertTrue(!HasEnvironmentVariable(startInfo, "CODEX_SHELL"));
+        AssertTrue(!HasEnvironmentVariable(startInfo, "CODEX_THREAD_ID"));
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("ELECTRON_RUN_AS_NODE", null);
+        Environment.SetEnvironmentVariable("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", null);
+        Environment.SetEnvironmentVariable("CODEX_SHELL", null);
+        Environment.SetEnvironmentVariable("CODEX_THREAD_ID", null);
+    }
+}
+
+static async Task CompatibleLaunchInjectsActiveApiKeyTest()
+{
+    var currentExe = Environment.ProcessPath ?? throw new Exception("Current process path is unavailable.");
+    var secretStore = new InMemorySecretStore();
+    await secretStore.WriteSecretAsync("api-key:compatible:acct", "sk-test");
+    var config = new AppConfig
+    {
+        ActiveSelection = new CodexSelection
+        {
+            ProviderId = "compatible",
+            AccountId = "acct"
+        },
+        Providers =
+        [
+            new ProviderDefinition
+            {
+                ProviderId = "compatible",
+                DisplayName = "Compatible",
+                Kind = ProviderKind.OpenAiCompatible,
+                BaseUrl = "https://example.test/v1"
+            }
+        ],
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "compatible",
+                AccountId = "acct",
+                Label = "Compatible account",
+                CredentialRef = "api-key:compatible:acct"
+            }
+        ]
+    };
+    var launchEnvironment = await CodexLaunchEnvironmentBuilder.BuildAsync(config, secretStore);
+    var launcher = new FakeProcessLauncher();
+    var service = new CodexLaunchService(processLauncher: launcher);
+
+    var result = await service.LaunchAsync(new AppSettings
+    {
+        CodexDesktopPath = currentExe
+    }, launchEnvironment);
+
+    var startInfo = launcher.StartCalls.Single();
     AssertTrue(result.Launched, result.Message);
-    AssertEqual("desktop", result.Target?.Kind);
-    AssertEqual(currentExe, launcher.StartCalls.Single().FileName);
-    AssertTrue(launcher.StartCalls.Single().UseShellExecute);
+    AssertTrue(!startInfo.UseShellExecute);
+    AssertEqual("sk-test", startInfo.EnvironmentVariables["OPENAI_API_KEY"]);
+    AssertEqual("https://example.test/v1", startInfo.EnvironmentVariables["OPENAI_BASE_URL"]);
 }
 
 static async Task AppConfigManualOrderTest()
@@ -855,6 +1222,7 @@ static async Task AccountCsvCompatibleSecretTest()
             new ProviderDefinition
             {
                 ProviderId = "provider",
+                CodexProviderId = "openai",
                 DisplayName = "Provider",
                 Kind = ProviderKind.OpenAiCompatible,
                 BaseUrl = "https://example.test/v1"
@@ -882,6 +1250,7 @@ static async Task AccountCsvCompatibleSecretTest()
     AssertEqual(1, result.AccountsImported);
     AssertEqual(1, result.SecretsImported);
     AssertEqual("Provider", importedConfig.Providers.Single(p => p.ProviderId == "provider").DisplayName);
+    AssertEqual("openai", importedConfig.Providers.Single(p => p.ProviderId == "provider").CodexProviderId);
     AssertEqual(3, importedConfig.Accounts.Single(a => a.ProviderId == "provider").ManualOrder);
     AssertEqual("sk-secret", await targetSecrets.ReadSecretAsync("api-key:provider:acct"));
 }
@@ -974,6 +1343,19 @@ static void AssertDoesNotContain(string text, string value)
     {
         throw new Exception($"Expected text not to contain {value}.");
     }
+}
+
+static bool HasEnvironmentVariable(ProcessStartInfo startInfo, string name)
+    => startInfo.EnvironmentVariables.Keys
+        .Cast<string>()
+        .Any(key => string.Equals(key, name, StringComparison.OrdinalIgnoreCase));
+
+static string CreateFakeDesktopExecutable(string windowsAppsRoot, string packageDirectoryName)
+{
+    var desktopPath = Path.Combine(windowsAppsRoot, packageDirectoryName, "app", "Codex.exe");
+    Directory.CreateDirectory(Path.GetDirectoryName(desktopPath)!);
+    File.WriteAllText(desktopPath, "fake");
+    return desktopPath;
 }
 
 internal sealed class TempDir : IDisposable

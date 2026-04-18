@@ -34,13 +34,27 @@ public sealed class CodexAuthStore
         return JsonSerializer.Serialize(document, JsonOptions) + Environment.NewLine;
     }
 
-    public string SerializeCompatibleApiKey(string apiKey)
+    public string SerializeCompatibleApiKey(
+        string apiKey,
+        JsonElement? preservedTokens = null,
+        DateTimeOffset? lastRefresh = null)
     {
         var document = new Dictionary<string, object?>
         {
-            ["auth_mode"] = "api_key",
+            ["auth_mode"] = "apikey",
             ["OPENAI_API_KEY"] = apiKey
         };
+
+        if (preservedTokens.HasValue)
+        {
+            document["tokens"] = preservedTokens.Value;
+        }
+
+        if (lastRefresh.HasValue)
+        {
+            document["last_refresh"] = lastRefresh.Value;
+        }
+
         return JsonSerializer.Serialize(document, JsonOptions) + Environment.NewLine;
     }
 }

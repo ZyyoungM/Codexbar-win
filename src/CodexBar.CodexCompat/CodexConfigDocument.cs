@@ -29,6 +29,9 @@ public sealed class CodexConfigDocument
     public void SetBare(string key, string value)
         => SetRaw(key, value);
 
+    public void SetSectionString(string sectionName, string key, string value)
+        => SetSectionRaw(sectionName, key, Quote(value));
+
     public void RemoveTopLevelKey(string key)
     {
         var pattern = TopLevelKeyRegex(key);
@@ -99,6 +102,58 @@ public sealed class CodexConfigDocument
         }
 
         _lines.Insert(insertAt, replacement);
+    }
+
+    private void SetSectionRaw(string sectionName, string key, string rawValue)
+    {
+        var pattern = TopLevelKeyRegex(key);
+        var replacement = $"{key} = {rawValue}";
+        var (start, end) = FindSection(sectionName);
+
+        if (start < 0)
+        {
+            if (_lines.Count > 0 && !string.IsNullOrWhiteSpace(_lines[^1]))
+            {
+                _lines.Add(string.Empty);
+            }
+
+            _lines.Add($"[{sectionName}]");
+            _lines.Add(replacement);
+            return;
+        }
+
+        for (var i = start + 1; i < end; i++)
+        {
+            if (pattern.IsMatch(_lines[i]))
+            {
+                _lines[i] = replacement;
+                return;
+            }
+        }
+
+        _lines.Insert(end, replacement);
+    }
+
+    private (int Start, int End) FindSection(string sectionName)
+    {
+        for (var i = 0; i < _lines.Count; i++)
+        {
+            var header = TryGetSectionHeader(_lines[i]);
+            if (header is null || !string.Equals(header, sectionName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var end = i + 1;
+            while (end < _lines.Count && TryGetSectionHeader(_lines[end]) is null)
+            {
+                end++;
+            }
+
+            return (i, end);
+        }
+
+        return (-1, -1);
     }
 
     private int FirstSectionIndex()

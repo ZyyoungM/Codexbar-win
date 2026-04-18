@@ -65,6 +65,50 @@ public sealed class SwitchJournalStore
 
         return entries;
     }
+
+    public async Task RenameProviderAsync(
+        string oldProviderId,
+        string newProviderId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(oldProviderId) ||
+            string.IsNullOrWhiteSpace(newProviderId) ||
+            string.Equals(oldProviderId, newProviderId, StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(_path))
+        {
+            return;
+        }
+
+        var entries = await ReadAllAsync(cancellationToken);
+        var changed = false;
+        var rewritten = entries
+            .Select(entry =>
+            {
+                if (!string.Equals(entry.Selection.ProviderId, oldProviderId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return entry;
+                }
+
+                changed = true;
+                return entry with
+                {
+                    Selection = entry.Selection with
+                    {
+                        ProviderId = newProviderId
+                    }
+                };
+            })
+            .ToList();
+
+        if (!changed)
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        var lines = rewritten.Select(entry => JsonSerializer.Serialize(entry, JsonOptions));
+        await File.WriteAllLinesAsync(_path, lines, cancellationToken);
+    }
 }
 
 public sealed record SwitchJournalEntry

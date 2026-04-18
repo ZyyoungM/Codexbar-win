@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="&#x7F16;&#x8F91;&#x8D26;&#x53F7;"
         Width="440"
-        Height="420"
+        Height="500"
         MinWidth="380"
         MinHeight="320"
         WindowStartupLocation="CenterOwner"
@@ -14,7 +14,7 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
       <StackPanel>
         <TextBlock Text="Provider ID" />
-        <TextBox x:Name="ProviderIdBox" IsReadOnly="True" Margin="0,2,0,10" />
+        <TextBox x:Name="ProviderIdBox" Margin="0,2,0,10" />
         <TextBlock Text="Provider &#x540D;&#x79F0;" />
         <TextBox x:Name="ProviderNameBox" Margin="0,2,0,10" />
         <TextBlock x:Name="BaseUrlLabel" Text="Base URL" />
@@ -40,6 +40,16 @@
         </StackPanel>
         <TextBlock x:Name="ApiKeyLabel" Text="API Key&#xFF08;&#x7559;&#x7A7A;&#x8868;&#x793A;&#x4FDD;&#x7559;&#x5F53;&#x524D;&#x503C;&#xFF09;" />
         <PasswordBox x:Name="ApiKeyBox" Margin="0,2,0,12" />
+        <Expander x:Name="AdvancedCompatExpander" Header="高级兼容选项" IsExpanded="False" Margin="0,0,0,12">
+          <StackPanel Margin="0,8,0,0">
+            <TextBlock Text="Codex Provider ID（可选，默认 openai，仅用于兼容 Codex 的 provider / 历史过滤）"
+                       TextWrapping="Wrap" />
+            <TextBox x:Name="CodexProviderIdBox" Margin="0,2,0,8" />
+            <TextBlock Text="普通第三方 API 场景保持默认即可；只有需要显式改写 Codex 侧 provider 标识时再修改这里。"
+                       Foreground="#666666"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Expander>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
           <Button Content="&#x53D6;&#x6D88;" Width="72" Margin="0,0,8,0" Click="Cancel_Click" />
           <Button Content="&#x4FDD;&#x5B58;" Width="72" Click="Save_Click" />

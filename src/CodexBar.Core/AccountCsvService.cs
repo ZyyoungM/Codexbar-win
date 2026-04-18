@@ -11,6 +11,7 @@ public sealed class AccountCsvService
     private static readonly string[] Header =
     [
         "provider_id",
+        "codex_provider_id",
         "provider_name",
         "provider_kind",
         "base_url",
@@ -74,6 +75,7 @@ public sealed class AccountCsvService
 
             await writer.WriteLineAsync(Csv.Join(
                 provider.ProviderId,
+                provider.CodexProviderId ?? "",
                 provider.DisplayName,
                 provider.Kind.ToString(),
                 provider.BaseUrl ?? "",
@@ -140,12 +142,14 @@ public sealed class AccountCsvService
 
             var existingProvider = providers.FirstOrDefault(p => p.ProviderId == providerId);
             var providerKind = ParseEnum(Get(index, values, "provider_kind"), existingProvider?.Kind ?? GuessProviderKind(providerId, Get(index, values, "api_key")));
+            var codexProviderId = FirstNonEmpty(Get(index, values, "codex_provider_id"), existingProvider?.CodexProviderId);
             var providerName = FirstNonEmpty(Get(index, values, "provider_name"), existingProvider?.DisplayName, providerId)!;
             var baseUrl = FirstNonEmpty(Get(index, values, "base_url"), existingProvider?.BaseUrl);
 
             var provider = new ProviderDefinition
             {
                 ProviderId = providerId,
+                CodexProviderId = codexProviderId,
                 DisplayName = providerName,
                 Kind = providerKind,
                 AuthMode = providerKind == ProviderKind.OpenAiOAuth ? AuthMode.OAuth : AuthMode.ApiKey,

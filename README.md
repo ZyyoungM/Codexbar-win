@@ -1,6 +1,6 @@
 ﻿# CodexBar for Windows
 
-当前版本：`v0.1.0`
+当前版本：`v0.1.3`
 
 这是 macOS 项目 [`lizhelang/codexbar`](https://github.com/lizhelang/codexbar) 的 Windows 原生移植版。它不是重建 Codex，也不是逐文件翻译 Swift/macOS 代码，而是围绕 Codex 的本地配置切换、OpenAI OAuth、多账号管理、兼容 Provider、usage 统计和托盘入口做的 Windows 工具。
 
@@ -37,8 +37,11 @@
 - OpenAI OAuth 登录与多 OpenAI 账号保存
 - OpenAI-compatible Provider 管理
 - 同一 Provider 下挂多组 API Key
+- OpenAI-compatible Provider 连通探测与 `/v1` Base URL 提示
 - 账号切换时原子写入 `config.toml` / `auth.json`
 - Windows Credential Manager 持久化 token / API key
+- 兼容 Provider 启动 Codex 时自动注入 `OPENAI_API_KEY`
+- 兼容 Provider 激活时保留现有 OpenAI OAuth 身份快照，尽量维持 Codex 历史会话可见性
 - usage 扫描与统计：
   - 今日
   - 近 7 天
@@ -46,7 +49,7 @@
   - 累计
 - OpenAI 官方套餐 / 剩余额度只读刷新
 - OpenAI 聚合网关模式的激活时路由
-- GUI 中直接“启动 Codex”
+- GUI 中直接“启动 Codex”（会优先定位最新的 WindowsApps / MSIX Desktop 包）
 - GUI 操作状态反馈：
   - 正在刷新
   - 正在切换账号
@@ -82,6 +85,23 @@
 - `docs`
   - 进度文档和项目说明
 
+## 协作工作流
+
+这个项目默认采用“`main thread` 管主线，`feature thread` 管开发”的协作方式。
+
+- `main thread`
+  - 负责路线图、优先级、版本规划、审查和发布准备
+  - 默认不直接改业务代码，不承担日常实现测试
+- `feature thread`
+  - 负责单个功能的实现、测试、手动验证和回交
+  - 每个 thread 尽量只做一个问题域
+
+详细规则、交接模板和可直接复用的 prompt 见：
+
+- `docs/THREAD_WORKFLOW.md`
+
+以后是否允许推送、何时推送、由谁推送，也统一按这个工作流文档执行，默认由 `main thread` 做最终发布和推送决策。
+
 ## 运行环境
 
 ### 一、源码运行 / 未编译版
@@ -102,9 +122,26 @@
 
 ### 二、已编译版本
 
-当前初始版本 `0.1.0` 还没有完整的 self-contained 安装包，所以需要分两种情况：
+当前版本 `0.1.3` 已提供仓库内可复现的便携打包脚本：
 
-#### 1）运行仓库里的构建输出
+```powershell
+.\package.ps1
+```
+
+默认产物位置：
+
+- 目录包：`artifacts\package\CodexBar-portable-win-x64-v0.1.3\`
+- 压缩包：`artifacts\package\CodexBar-portable-win-x64-v0.1.3.zip`
+
+#### 1）推荐：运行打包后的便携版本
+
+优点：
+
+- 不依赖机器全局安装 `.NET`
+- 包内自带本地 `.dotnet` 运行时
+- 推荐直接使用 `start-codexbar.cmd` 与 `open-settings.cmd`
+
+#### 2）运行仓库里的构建输出
 
 必需：
 
@@ -123,12 +160,12 @@
 - 当前仓库形态下，不要假设任意机器都能直接双击 `src\CodexBar.Win\bin\...\CodexBar.Win.exe` 成功运行
 - 没有全局 `.NET` 时，应优先使用仓库脚本或自行准备本地 `.dotnet`
 
-#### 2）后续正式发布版本
+#### 3）后续正式发布版本
 
 建议：
 
-- 做 `self-contained publish`
-- 或者把运行时与启动脚本一起打包
+- 可以继续做真正的 `self-contained publish`
+- 后续再补 installer（例如 MSIX / MSI）
 
 正式发布版的理想目标应该是：
 
@@ -183,6 +220,12 @@ dotnet run --project .\src\CodexBar.Cli\CodexBar.Cli.csproj -- help
 .\run-win.ps1
 ```
 
+打包便携发布包：
+
+```powershell
+.\package.ps1
+```
+
 打开设置：
 
 ```powershell
@@ -203,6 +246,8 @@ CLI 帮助：
 .\run-cli.ps1 locate-codex
 ```
 
+如果设置里保存的是旧版 `WindowsApps` 路径，当前版本会自动优先切到最新安装的 Codex Desktop 包。
+
 ### 2. 验证 usage 扫描
 
 ```powershell
@@ -219,6 +264,12 @@ CLI 帮助：
 
 ```powershell
 .\run-cli.ps1 refresh-openai-usage
+```
+
+### 5. 验证兼容 Provider 连通性
+
+```powershell
+.\run-cli.ps1 probe-compatible
 ```
 
 ## 第三方 API 中转站接入说明
@@ -241,7 +292,15 @@ CLI 帮助：
 
 - 对第三方服务商来说，真正外部提供的一般是 `Base URL` 和 `API Key`
 - 但在本工具里，`Provider ID` 和 `账号 ID` 是本地唯一标识，也属于必填
+- `Provider ID` 是 CodexBar 内部主键，不能和官方 `openai` Provider 重名；第三方 API 默认通过 `Codex Provider ID = openai` 写入 Codex，以适配 Codex Desktop 的历史过滤
+- 当 `Codex Provider ID = openai` 时，CodexBar 不会写 `[model_providers.openai]`，而是写顶层 `openai_base_url`，避免触发 Codex 的内置 Provider 保留 ID 校验
 - 如果可选显示名留空，会自动回退为对应的 ID
+- `Base URL` 通常需要填写到 OpenAI 兼容接口根路径，例如 `https://api.example.com/v1`
+- 如果不确定中转站路径是否正确，可以在主面板选中账号后点击“探测 API”
+- 切换到兼容 Provider 并从 GUI 启动 Codex 时，CodexBar 会从 Windows Credential Manager 读取该账号的 API Key，并作为 `OPENAI_API_KEY` 注入到新启动的 Codex 进程
+- 切换到兼容 Provider 时，CodexBar 会尽量保留当前 `auth.json` 里的 OpenAI OAuth 身份快照，避免只因改成 `apikey` 模式就把现有本地历史会话“看丢”
+- 如果 Codex Desktop 已经在运行，请先完全退出 Codex Desktop，再从 CodexBar 启动；环境变量只会进入新进程，重新录入 API Key 不会改变已经运行中的 Codex 进程
+- 兼容 Provider 的 `Provider ID` 现在可以在“编辑账号”里修改；如果想让 Codex 按官方 `openai` Provider 显示历史，请保持内部 `Provider ID` 唯一，并把 `Codex Provider ID` 设为 `openai`
 
 ## 启动行为说明
 
@@ -284,3 +343,5 @@ CLI 帮助：
 - 可以继续本地开发
 - 可以上传到 GitHub 作为后续迭代起点
 - 代码、文档、版本信息保持同步
+
+本次 `v0.1.3` 主要补充了 GitHub 推送规则，以及 `main thread` / `feature thread` 在发布和推送时的职责约定。

@@ -30,6 +30,7 @@ public sealed class UsageScanner
                 long cached = 0;
                 var events = 0;
                 DateTimeOffset? startedAt = null;
+                var fallbackUtc = SafeGetLastWriteTimeUtc(path);
 
                 await foreach (var line in ReadLinesSharedAsync(path, cancellationToken))
                 {
@@ -42,7 +43,7 @@ public sealed class UsageScanner
                     {
                         using var doc = JsonDocument.Parse(line);
                         startedAt ??= ExtractSessionStart(doc.RootElement);
-                        var usageEvent = ExtractUsage(doc.RootElement, File.GetLastWriteTimeUtc(path));
+                        var usageEvent = ExtractUsage(doc.RootElement, fallbackUtc);
                         if (usageEvent is null)
                         {
                             continue;
@@ -62,7 +63,7 @@ public sealed class UsageScanner
                 sessions.Add(new SessionUsageRecord
                 {
                     SessionPath = path,
-                    StartedAt = startedAt ?? new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero),
+                    StartedAt = startedAt ?? new DateTimeOffset(fallbackUtc, TimeSpan.Zero),
                     InputTokens = input,
                     OutputTokens = output,
                     CachedInputTokens = cached,
@@ -102,6 +103,22 @@ public sealed class UsageScanner
                     yield return line;
                 }
             }
+        }
+    }
+
+    private static DateTime SafeGetLastWriteTimeUtc(string path)
+    {
+        try
+        {
+            return File.GetLastWriteTimeUtc(path);
+        }
+        catch (IOException)
+        {
+            return DateTime.UtcNow;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return DateTime.UtcNow;
         }
     }
 

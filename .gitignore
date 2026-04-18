@@ -9,6 +9,7 @@
 .tmpbuild/
 .tmpobj/
 .verify/
+artifacts/
 MANUAL_DELETE_BEFORE_UPLOAD_*/
 runtime-*.log
 runtime-pp.xml

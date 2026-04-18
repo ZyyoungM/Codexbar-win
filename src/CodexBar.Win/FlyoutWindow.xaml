@@ -33,6 +33,7 @@
           <WrapPanel Margin="0,8,0,0" IsEnabled="{Binding CanInteract}">
             <Button Content="&#x4F7F;&#x7528;" Width="58" Margin="0,0,8,8" Click="UseSelected_Click" />
             <Button Content="&#x542F;&#x52A8; Codex" Width="96" Margin="0,0,8,8" Click="LaunchCodex_Click" />
+            <Button Content="&#x63A2;&#x6D4B; API" Width="78" Margin="0,0,8,8" Click="ProbeApi_Click" />
             <Button Content="&#x7F16;&#x8F91;" Width="58" Margin="0,0,8,8" Click="EditSelected_Click" />
             <Button Content="&#x4E0A;&#x79FB;" Width="52" Margin="0,0,8,8" Click="MoveUp_Click" />
             <Button Content="&#x4E0B;&#x79FB;" Width="52" Margin="0,0,8,8" Click="MoveDown_Click" />

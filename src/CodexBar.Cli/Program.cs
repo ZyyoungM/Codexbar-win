@@ -32,6 +32,9 @@ try
         case "refresh-openai-usage":
             await RefreshOpenAiUsageAsync();
             break;
+        case "probe-compatible":
+            await ProbeCompatibleAsync(args.Skip(1).ToArray());
+            break;
         case "add-compatible":
             await AddCompatibleAsync(args.Skip(1).ToArray());
             break;
@@ -148,12 +151,43 @@ async Task RefreshOpenAiUsageAsync()
     }
 }
 
+async Task ProbeCompatibleAsync(string[] commandArgs)
+{
+    var options = ParseOptions(commandArgs);
+    var providerId = options.GetValueOrDefault("provider-id");
+    var accountId = options.GetValueOrDefault("account-id");
+    var compatibleProviderIds = appConfig.Providers
+        .Where(provider => provider.Kind == ProviderKind.OpenAiCompatible)
+        .Select(provider => provider.ProviderId)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    var accounts = appConfig.Accounts
+        .Where(account => compatibleProviderIds.Contains(account.ProviderId))
+        .Where(account => string.IsNullOrWhiteSpace(providerId) || string.Equals(account.ProviderId, providerId, StringComparison.OrdinalIgnoreCase))
+        .Where(account => string.IsNullOrWhiteSpace(accountId) || string.Equals(account.AccountId, accountId, StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    if (accounts.Count == 0)
+    {
+        Console.WriteLine("no compatible accounts to probe");
+        return;
+    }
+
+    var results = await new CompatibleProviderProbeService(secretStore).ProbeAsync(appConfig, accounts);
+    foreach (var result in results)
+    {
+        var status = result.StatusCode.HasValue ? $"http={result.StatusCode.Value}" : "http=(none)";
+        var suggestion = string.IsNullOrWhiteSpace(result.SuggestedBaseUrl) ? "" : $" suggested_base_url={result.SuggestedBaseUrl}";
+        Console.WriteLine($"{result.ProviderId}/{result.AccountId}: success={result.Success} {status} elapsed_ms={(int)Math.Round(result.Elapsed.TotalMilliseconds)} message={result.Message}{suggestion}");
+    }
+}
+
 async Task AddCompatibleAsync(string[] commandArgs)
 {
     var options = ParseOptions(commandArgs);
     var providerId = Required(options, "provider-id");
     var accountId = Required(options, "account-id");
     var providerName = options.GetValueOrDefault("name", providerId);
+    var codexProviderId = options.GetValueOrDefault("codex-provider-id", "openai");
     var accountLabel = options.GetValueOrDefault("label", accountId);
     var baseUrl = Required(options, "base-url");
     var apiKey = Required(options, "api-key");
@@ -167,6 +201,7 @@ async Task AddCompatibleAsync(string[] commandArgs)
         Providers = Upsert(appConfig.Providers, p => p.ProviderId == providerId, new ProviderDefinition
         {
             ProviderId = providerId,
+            CodexProviderId = string.IsNullOrWhiteSpace(codexProviderId) ? null : codexProviderId,
             DisplayName = providerName,
             Kind = ProviderKind.OpenAiCompatible,
             AuthMode = AuthMode.ApiKey,
@@ -271,7 +306,8 @@ async Task ActivateAsync(string[] commandArgs)
         Console.WriteLine($"aggregate_gateway_message: {aggregateDecision.Message}");
     }
 
-    var launchResult = await new CodexLaunchService().LaunchIfConfiguredAsync(appConfig.Settings);
+    var launchEnvironment = await CodexLaunchEnvironmentBuilder.BuildAsync(appConfig, secretStore);
+    var launchResult = await new CodexLaunchService().LaunchIfConfiguredAsync(appConfig.Settings, launchEnvironment);
     if (!launchResult.Attempted)
     {
         return;
@@ -456,7 +492,8 @@ static void PrintHelp()
     Console.WriteLine("  scan [days]");
     Console.WriteLine("  scan-accounts");
     Console.WriteLine("  refresh-openai-usage");
-    Console.WriteLine("  add-compatible --provider-id <id> --name <name> --base-url <url> --account-id <id> --label <label> --api-key <key>");
+    Console.WriteLine("  probe-compatible [--provider-id <id>] [--account-id <id>]");
+    Console.WriteLine("  add-compatible --provider-id <id> [--codex-provider-id <id>] --name <name> --base-url <url> --account-id <id> --label <label> --api-key <key>");
     Console.WriteLine("  export-accounts --path <csv> [--include-secrets]");
     Console.WriteLine("  import-accounts --path <csv>");
     Console.WriteLine("  activate --provider-id <id> --account-id <id>");

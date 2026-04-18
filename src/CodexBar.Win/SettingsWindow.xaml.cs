@@ -139,7 +139,8 @@ public partial class SettingsWindow : Window
                 return;
             }
 
-            var launchResult = await new CodexLaunchService().LaunchAsync(_config.Settings);
+            var launchEnvironment = await CodexLaunchEnvironmentBuilder.BuildAsync(_config, _secretStore);
+            var launchResult = await new CodexLaunchService().LaunchAsync(_config.Settings, launchEnvironment);
             StatusText.Text = launchResult.Launched
                 ? launchResult.Message
                 : $"\u542F\u52A8 Codex \u5931\u8D25\uFF1A{launchResult.Message}";

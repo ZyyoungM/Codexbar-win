@@ -46,6 +46,9 @@ public partial class FlyoutWindow : Window
     private async void LaunchCodex_Click(object sender, RoutedEventArgs e)
         => await _viewModel.LaunchCodexAsync(AccountsList.SelectedItem as AccountListItem);
 
+    private async void ProbeApi_Click(object sender, RoutedEventArgs e)
+        => await _viewModel.ProbeCompatibleApisAsync(AccountsList.SelectedItem as AccountListItem);
+
     private async void DeleteSelected_Click(object sender, RoutedEventArgs e)
     {
         if (AccountsList.SelectedItem is AccountListItem item)

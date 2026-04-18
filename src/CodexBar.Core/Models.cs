@@ -59,6 +59,7 @@ public enum AccountTier
 public sealed record ProviderDefinition
 {
     public required string ProviderId { get; init; }
+    public string? CodexProviderId { get; init; }
     public required string DisplayName { get; init; }
     public required ProviderKind Kind { get; init; }
     public string? BaseUrl { get; init; }
