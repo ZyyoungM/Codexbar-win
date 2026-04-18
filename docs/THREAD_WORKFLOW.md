@@ -70,6 +70,10 @@
 - `docs/IMPLEMENTATION_PROGRESS.md`
 - `Directory.Build.props`
 
+其中 `README.md` 的版本更新说明默认放在文末，只概括相对上个版本的新增、修改和发布重点；细节保持在 `CHANGELOG.md` 和进度文档里。
+
+`README.md` 应以软件用户为主要读者，尽量不堆积 thread 分工、交接模板和发布内务；这些内容统一写在本工作流文档中。
+
 ### 线程边界规则
 
 - `main thread` 管方向、审查和发布
@@ -220,9 +224,12 @@
 准备发布时，`main thread` 至少检查：
 
 - 当前版本号是否正确
+- 远端 `main` 是否已经推到目标提交
+- 对应版本 tag 是否已经单独推送
 - `README.md` 是否反映当前能力
 - `CHANGELOG.md` 是否覆盖本次发布内容
 - `docs/IMPLEMENTATION_PROGRESS.md` 是否和现状一致
+- `Directory.Build.props` 是否和当前版本一致
 - 高风险功能是否已经过测试
 - 是否仍有不适合发布的临时实现
 - 是否需要把缓存、构建产物和测试产物清理到待删除目录
@@ -251,7 +258,9 @@
 
 - 目标版本号
 - 本次推送包含哪些功能
+- 远端 `main` 是否需要更新，准备推到哪个提交
 - 是否需要打 tag
+- 对应版本 tag 是否已经创建、本地是否存在、推送后要不要单独确认远端状态
 - 是否需要同步更新 Release 说明
 - 是否还有已知风险只是暂不阻塞发布
 
@@ -273,10 +282,23 @@ feature thread 完成开发后，默认只做以下事情：
 完成推送后，`main thread` 应记录：
 
 - 推送分支
+- 远端 `main` 是否已更新到目标提交
 - 对应版本号
-- 是否打 tag
+- 版本 tag 是否已推送
 - 本次发布包含的核心内容
 - 仍然保留的非阻塞问题
+
+推荐按下面格式记录：
+
+```text
+GitHub 同步状态
+- 远端 main：已推送 / 未推送（commit: <sha>）
+- 版本 tag：已推送 / 未推送（tag: vX.Y.Z）
+- 当前版本号：vX.Y.Z
+- README / CHANGELOG / IMPLEMENTATION_PROGRESS / Directory.Build.props：已同步 / 未同步
+- 工作区状态：干净 / 非干净
+- 备注：
+```
 
 ## 10. 可直接写给 main thread 的推送规则 Prompt
 
@@ -300,8 +322,9 @@ feature thread 完成开发后，默认只做以下事情：
    - 是否需要打 tag / release
 5. 推送后 main thread 需要记录：
    - 分支
+   - 远端 main 是否已更新到目标提交
    - 版本号
-   - tag
+   - tag 是否已推送
    - 发布内容摘要
    - 仍存在但不阻塞发布的问题
 

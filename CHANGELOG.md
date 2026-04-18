@@ -6,10 +6,12 @@
 
 ### 主要内容
 
+- 重构 `README.md` 为用户导向文档，把 thread 协作 / 推送规则从主页说明收回到 `docs/THREAD_WORKFLOW.md`
 - 在 `docs/THREAD_WORKFLOW.md` 中增加推送规则
 - 明确 `main thread` 负责最终审查、版本收口和推送决策
 - 明确 feature thread 默认不直接推送正式仓库
 - 补充可直接写给 `main thread` 的推送规则 prompt
+- 把远端 `main` 与版本 tag 的同步状态拆成独立检查项，避免“代码已推但 tag 未推”
 
 ## v0.1.2
 

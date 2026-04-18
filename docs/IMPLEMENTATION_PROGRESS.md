@@ -172,13 +172,17 @@ Enable aggregate mode in app config:
 
 ### 2026-04-18
 
+- Refactored `README.md` to focus on software users and moved thread-collaboration details out of the main readme.
 - Added GitHub push rules to `docs/THREAD_WORKFLOW.md`.
 - Added a reusable prompt that tells the main thread how future pushes should be gated.
 - Bumped project version metadata to `0.1.3` to keep workflow/versioning in sync.
 - Moved `Codex Provider ID` into an advanced compatibility section in the add/edit Provider UI so the default third-party API path stays simpler.
+- Completed final packaged manual verification for `third-party API -> open existing history session -> restore chat`, and confirmed new chats still work in the latest portable build.
+- Recorded the `v0.1.3` sync checkpoint with remote `main` at commit `451cd04` and a clean `codexbar-win` working tree at that checkpoint.
+- Recorded that local tag `v0.1.3` still exists only locally and must be checked as a separate push item before closing the release.
+- Updated the main-thread release checklist so remote `main` and version-tag push status are tracked separately.
 - Bumped project version metadata to `0.1.2` and aligned package naming/documentation with the new candidate version.
 - Generated portable package artifacts for `v0.1.2`.
-- Final packaged manual verification for `第三方 API -> 打开已有历史会话 -> 恢复聊天` is still required before release.
 
 ### 2026-04-17
 
