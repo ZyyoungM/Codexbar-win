@@ -1,3 +1,14 @@
+**界面预览**
+
+CodexBar for Windows 的日常交互主要围绕两类界面展开：
+
+- **主浮窗**：集中承载账号 / Provider 管理、启动 Codex、查看当前激活对象与进入设置，是完整的高频操作入口。
+- **小浮窗**：作为轻量常驻视图，适合快速确认当前激活的 Provider、usage 摘要和最近刷新状态；展开后还能继续查看更细的 usage 明细与当前模式。
+
+| 主浮窗 | 小浮窗（默认） | 小浮窗（展开） |
+| --- | --- | --- |
+| ![主浮窗界面](docs/images/preview-main-window.png) | ![小浮窗默认视图](docs/images/preview-mini-window-collapsed.png) | ![小浮窗展开视图](docs/images/preview-mini-window-expanded.png) |
+
 # CodexBar for Windows
 
 当前版本：`v0.2.1`
