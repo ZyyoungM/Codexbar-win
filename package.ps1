@@ -120,11 +120,16 @@ Version: $version
 Configuration: $Configuration
 Package mode: portable bundle with local .NET runtime
 
+Quick start:
+1. Unzip this folder anywhere you like
+2. Double-click start-codexbar.cmd
+3. If you want to configure accounts or providers first, double-click open-settings.cmd
+
 Recommended launchers:
 - start-codexbar.cmd
 - open-settings.cmd
 
-The package includes a local .dotnet runtime under .dotnet\ and does not require a global .NET install.
+This package includes a local .dotnet runtime under .dotnet\ and does not require a global .NET install.
 "@
 Set-Content -LiteralPath (Join-Path $packageRoot "PACKAGE_INFO.txt") -Value $packageNotes -Encoding UTF8
 

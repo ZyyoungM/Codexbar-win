@@ -43,7 +43,9 @@ CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/
 
 ## 快速开始
 
-### 方式一：推荐使用便携包
+### 方式一：推荐使用便携包（下载后即用）
+
+如果你只是想直接使用 CodexBar，推荐优先使用便携包。
 
 如果你在本仓库本地打包，请运行：
 
@@ -56,12 +58,22 @@ CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/
 - 目录包：`artifacts\package\CodexBar-portable-win-x64-v0.2.0\`
 - 压缩包：`artifacts\package\CodexBar-portable-win-x64-v0.2.0.zip`
 
-进入目录包后，优先使用：
+拿到压缩包后，按下面 3 步即可开始使用：
+
+1. 解压 `CodexBar-portable-win-x64-v0.2.0.zip`
+2. 进入解压后的目录
+3. 双击 `start-codexbar.cmd`
+
+目录里最常用的两个入口是：
 
 - `start-codexbar.cmd`
 - `open-settings.cmd`
 
-这样更适合没有全局 `.NET` 的机器。
+说明：
+
+- 便携包内已经带有本地 `.NET` 运行时，不需要额外安装全局 `.NET`
+- 首次启动后，CodexBar 会以托盘工具形式常驻；如果没看到主窗口，请留意系统托盘区
+- 如果你想先配置账号、Provider 或 Overlay，直接双击 `open-settings.cmd`
 
 ### 方式二：从源码直接运行
 
@@ -100,6 +112,8 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 3. 在浏览器里完成 OAuth 授权
 4. 回到 CodexBar 选择目标账号并激活
 5. 从 CodexBar 启动 Codex
+
+如果浏览器回调没有自动完成，也可以继续使用手工粘贴 callback URL / `code` 的 fallback。
 
 ### 2. 接入第三方兼容 Provider
 
