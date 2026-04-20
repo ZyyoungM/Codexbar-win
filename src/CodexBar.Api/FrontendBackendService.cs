@@ -473,9 +473,9 @@ public sealed class FrontendBackendService
             account => account,
             StringComparer.OrdinalIgnoreCase);
 
-        if (orderedKeys.Count == 0 || orderedKeys.Any(key => !map.ContainsKey(key)))
+        if (!HasCompleteDistinctAccountSet(orderedKeys, map))
         {
-            return new FrontendCommandResult(false, "排序数据无效。");
+            return new FrontendCommandResult(false, "排序数据必须覆盖全部账号且不能重复，请刷新后重试。");
         }
 
         var updatedAccounts = new List<AccountRecord>(config.Accounts.Count);
@@ -808,6 +808,27 @@ public sealed class FrontendBackendService
         var list = source.Where(entry => !predicate(entry)).ToList();
         list.Add(item);
         return list;
+    }
+
+    private static bool HasCompleteDistinctAccountSet(
+        IReadOnlyList<string> orderedKeys,
+        IReadOnlyDictionary<string, AccountRecord> accountMap)
+    {
+        if (orderedKeys.Count == 0 || orderedKeys.Count != accountMap.Count)
+        {
+            return false;
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in orderedKeys)
+        {
+            if (!accountMap.ContainsKey(key) || !seen.Add(key))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static int NextManualOrder(AppConfig config)

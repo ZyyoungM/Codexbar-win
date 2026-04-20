@@ -132,6 +132,7 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 - **如果 Codex Desktop 已经打开，请先完全退出，再从 CodexBar 启动。** 环境变量只会进入新进程。
 - **如果机器没有全局 `.NET`，不要直接双击 `bin` 目录里的 exe。** 优先用便携包里的启动脚本，或使用仓库脚本启动。
 - **兼容 Provider 的连通性探测基于 `/models`。** 如果探测失败，先检查 `Base URL` 是否缺少 `/v1`。
+- **本地 API 的浏览器访问只信任受控 loopback origin。** 当前只允许 `http://127.0.0.1:5057` / `http://localhost:5057` / `http://127.0.0.1:5173` / `http://localhost:5173` / `http://127.0.0.1:4173` / `http://localhost:4173`；这样保留本地 API 自身和前端重建开发/预览入口，同时阻止任意网页跨站读写本地 API。
 
 ## 当前限制
 

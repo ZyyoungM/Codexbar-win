@@ -32,15 +32,16 @@ The current implementation is a working MVP with a native tray-window model (`Ma
 | Shared history pool preservation | `[x]` | Activation updates active config/auth state only. Tests assert session files are not rewritten. |
 | TOML / auth compatibility | `[x]` | Lightweight TOML editing preserves unrelated content. OAuth `auth.json` output now includes Codex-required top-level `last_refresh`. |
 | Atomic activation write | `[x]` | `config.toml` and `auth.json` are written through transaction/rollback flow. |
-| OpenAI OAuth browser flow | `[x]` | PKCE, browser auth, localhost callback capture, and manual callback/code fallback are wired. |
+| OpenAI OAuth browser flow | `[x]` | PKCE, browser auth, localhost callback capture, and manual callback/code fallback are wired. Successful saves now rotate to a fresh OAuth attempt, full callback URLs must match the current `state`, and manual fallback always prefers the current pasted input over stale captured tokens. |
 | OpenAI OAuth account naming | `[x]` | Account label/email/sub are backfilled from `id_token` when available. |
+| Local API browser CORS boundary | `[x]` | Cross-origin browser access is limited to trusted loopback origins only: the API self-host origin plus the frontend rebuild dev/preview origins on ports `5173` and `4173`. Arbitrary external pages cannot read or mutate the local API. |
 | OpenAI official plan / quota snapshot | `[~]` | Read-only refresh works for OAuth accounts. UI shows remaining quota, next reset time, refresh timestamp, and refresh failures. Source endpoint is official-hosted but undocumented. |
 | Multiple OpenAI OAuth accounts | `[x]` | Multiple OpenAI OAuth accounts can be stored, displayed, switched, and re-activated. |
 | OpenAI-compatible providers | `[x]` | Provider ID/name/base URL plus account/API key are supported. Activation writes Codex-native provider config and `apikey` auth, launched Codex child processes receive the active compatible key as `OPENAI_API_KEY`, compatible activation preserves the existing OAuth identity snapshot when available, and compatible providers can map their Codex-facing provider ID to `openai` for Desktop history filtering via `openai_base_url` without overriding reserved built-ins. |
 | Multiple API keys under same provider | `[x]` | Supported by reusing provider ID with different account IDs. |
 | Compatible Provider connectivity probe | `[x]` | Main flyout and CLI can probe compatible accounts through `/models` and suggest a missing `/v1` Base URL when detected. |
 | Account edit UI | `[x]` | Temporary UI can edit labels; compatible providers can edit internal Provider ID, Codex Provider ID, name, base URL, and API key. |
-| Manual account ordering | `[x]` | `ManualOrder` is persisted and temporary UI supports Up/Down. |
+| Manual account ordering | `[x]` | `ManualOrder` is persisted and temporary UI supports Up/Down. Reorder writes now require a complete, non-duplicate account set so partial/stale payloads cannot silently drop omitted accounts. |
 | Usage-based ordering | `[~]` | Ordering prefers official OpenAI quota pressure when present, then local usage history. Attribution still depends on recorded successful switch journal entries. |
 | CSV export/import | `[x]` | Backend and native Settings popup both exist. Default export excludes secrets; explicit secret export is supported. |
 | Windows Credential Manager | `[x]` | API keys and OAuth tokens are persisted through Credential Manager. |
@@ -73,7 +74,7 @@ Latest known result:
 
 ```text
 build: succeeded
-tests: 33 passed
+tests: 38 passed
 diff-check: clean
 ```
 
@@ -89,9 +90,11 @@ Current automated coverage includes:
 - compatible-provider built-in openai alias via `openai_base_url`
 - compatible-provider launch environment injection
 - compatible-provider connectivity probe with `/v1` suggestion
+- local API trusted loopback CORS allowlist
 - OAuth activation writes Codex-compatible top-level `last_refresh`
 - transaction rollback
 - OAuth manual callback parsing
+- OAuth session isolation for manual fallback and post-save reset
 - usage scanner read-only behavior
 - usage scanner locked active session tolerance
 - usage attribution by switch intervals
@@ -107,6 +110,7 @@ Current automated coverage includes:
 - desktop locator packaged-app autodetection without configured path
 - portable packaging script and zip output
 - manual account order persistence
+- manual account reorder complete-payload enforcement
 - remaining-quota display formatting for 5h and weekly windows
 - official OpenAI quota refresh success mapping
 - official OpenAI quota unauthorized handling

@@ -11,10 +11,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy => policy
-        .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowAnyOrigin());
+    options.AddDefaultPolicy(TrustedFrontendCors.Apply);
 });
 builder.Services.AddSingleton<ProbeStatusStore>();
 builder.Services.AddSingleton<FrontendBackendService>();

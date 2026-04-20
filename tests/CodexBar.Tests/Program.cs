@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using CodexBar.Auth;
+using CodexBar.Tests;
 using CodexBar.CodexCompat;
 using CodexBar.Core;
 using CodexBar.Runtime;
@@ -29,6 +30,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("oauth activation writes codex-compatible last_refresh", OAuthActivationWritesLastRefreshTest),
     ("transaction rolls back on validation failure", RollbackTest),
     ("manual callback parser accepts URL and code", ManualCallbackParserTest),
+    ("trusted frontend cors only allows known loopback origins", ApiRegressionTests.TrustedFrontendCorsTest),
+    ("oauth manual fallback prefers current input over captured tokens", ApiRegressionTests.OAuthManualFallbackUsesCurrentInputTest),
+    ("oauth save success resets captured state for the next login attempt", ApiRegressionTests.OAuthSuccessfulSaveResetsAttemptStateTest),
+    ("account reorder requires complete payload coverage", ApiRegressionTests.ReorderAccountsRejectsPartialPayloadTest),
+    ("account reorder accepts full payload and preserves all accounts", ApiRegressionTests.ReorderAccountsAcceptsFullPayloadTest),
     ("usage scanner reads shared history without writes", UsageScannerTest),
     ("usage scanner tolerates locked active session files", UsageScannerLockedFileTest),
     ("compatible provider probe suggests missing v1 path", CompatibleProviderProbeSuggestsV1Test),

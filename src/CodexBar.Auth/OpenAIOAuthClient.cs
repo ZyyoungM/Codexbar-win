@@ -84,6 +84,19 @@ public sealed class OpenAIOAuthClient
         CancellationToken cancellationToken = default)
     {
         var parsed = ManualCallbackParser.Parse(callbackUrlOrCode);
+        if (parsed.WasFullCallbackUrl)
+        {
+            if (string.IsNullOrWhiteSpace(parsed.State))
+            {
+                throw new InvalidOperationException("Callback URL does not contain a state parameter.");
+            }
+
+            if (!string.Equals(parsed.State, flow.State, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("Callback state does not match the current OAuth login attempt.");
+            }
+        }
+
         return await ExchangeCodeAsync(flow, parsed.Code, cancellationToken);
     }
 
