@@ -81,6 +81,7 @@ public partial class OAuthDialog : Window
             SetBusy(true);
             SetStatus("\u6B63\u5728\u5B8C\u6210\u767B\u5F55", "\u6B63\u5728\u89E3\u6790\u624B\u5DE5\u56DE\u8C03\u5185\u5BB9\u2026");
             Tokens = await _client.CompleteManualInputAsync(_flow!, CallbackBox.Text);
+            _loopback.CancelPendingWait();
             SetStatus("\u767B\u5F55\u6210\u529F", "\u5DF2\u89E3\u6790 callback \u5E76\u83B7\u53D6 OAuth \u4EE4\u724C\u3002", isSuccess: true);
             DialogResult = true;
         }
@@ -95,7 +96,16 @@ public partial class OAuthDialog : Window
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
-        => DialogResult = false;
+    {
+        _loopback.CancelPendingWait();
+        DialogResult = false;
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _loopback.CancelPendingWait();
+        base.OnClosed(e);
+    }
 
     private void SetBusy(bool busy)
     {
