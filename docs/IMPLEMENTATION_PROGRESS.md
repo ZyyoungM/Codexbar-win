@@ -32,7 +32,7 @@ The current implementation is a working MVP with a native tray-window model (`Ma
 | Shared history pool preservation | `[x]` | Activation updates active config/auth state only. Tests assert session files are not rewritten. |
 | TOML / auth compatibility | `[x]` | Lightweight TOML editing preserves unrelated content. OAuth `auth.json` output now includes Codex-required top-level `last_refresh`. |
 | Atomic activation write | `[x]` | `config.toml` and `auth.json` are written through transaction/rollback flow. |
-| OpenAI OAuth browser flow | `[x]` | PKCE, browser auth, localhost callback capture, and manual callback/code fallback are wired. Successful saves now rotate to a fresh OAuth attempt, full callback URLs must match the current `state`, and manual fallback always prefers the current pasted input over stale captured tokens. |
+| OpenAI OAuth browser flow | `[x]` | PKCE, browser auth, localhost callback capture, and manual callback/code fallback are wired. Successful saves now rotate to a fresh OAuth attempt, explicitly cancel and release any stale `localhost:1455` listener before starting the next flow, full callback URLs must match the current `state`, and manual fallback always prefers the current pasted input over stale captured tokens. |
 | OpenAI OAuth account naming | `[x]` | Account label/email/sub are backfilled from `id_token` when available. |
 | Local API browser CORS boundary | `[x]` | Cross-origin browser access is limited to trusted loopback origins only: the API self-host origin plus the frontend rebuild dev/preview origins on ports `5173` and `4173`. Arbitrary external pages cannot read or mutate the local API. |
 | OpenAI official plan / quota snapshot | `[~]` | Read-only refresh works for OAuth accounts. UI shows remaining quota, next reset time, refresh timestamp, and refresh failures. Source endpoint is official-hosted but undocumented. |
@@ -74,7 +74,7 @@ Latest known result:
 
 ```text
 build: succeeded
-tests: 38 passed
+tests: 39 passed
 diff-check: clean
 ```
 
@@ -95,6 +95,7 @@ Current automated coverage includes:
 - transaction rollback
 - OAuth manual callback parsing
 - OAuth session isolation for manual fallback and post-save reset
+- OAuth flow rotation cancels stale loopback listeners before restarting localhost capture
 - usage scanner read-only behavior
 - usage scanner locked active session tolerance
 - usage attribution by switch intervals

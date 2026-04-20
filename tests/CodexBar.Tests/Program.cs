@@ -33,6 +33,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("trusted frontend cors only allows known loopback origins", ApiRegressionTests.TrustedFrontendCorsTest),
     ("oauth manual fallback prefers current input over captured tokens", ApiRegressionTests.OAuthManualFallbackUsesCurrentInputTest),
     ("oauth save success resets captured state for the next login attempt", ApiRegressionTests.OAuthSuccessfulSaveResetsAttemptStateTest),
+    ("oauth flow rotation cancels stale loopback listener before restarting localhost capture", ApiRegressionTests.OAuthFlowRotationCancelsPendingLoopbackListenerTest),
     ("account reorder requires complete payload coverage", ApiRegressionTests.ReorderAccountsRejectsPartialPayloadTest),
     ("account reorder accepts full payload and preserves all accounts", ApiRegressionTests.ReorderAccountsAcceptsFullPayloadTest),
     ("usage scanner reads shared history without writes", UsageScannerTest),

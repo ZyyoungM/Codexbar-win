@@ -12,6 +12,7 @@
 - `--open`、`--overlay`、`--settings` 现在会在单实例已运行时转发到主实例处理；`--tray-only` 继续保留给冷启动 / 开机自启场景
 - 本地 `CodexBar.Api` 现在只对受控 loopback origin 开放浏览器 CORS：`127.0.0.1/localhost` 上的 `5057`、`5173`、`4173`；`frontend-rebuild` 开发/预览端口同步固定为 `5173/4173`，避免任意网页跨站读写本地 API
 - OpenAI OAuth 手工 fallback 现在始终以本次粘贴的 callback URL / `code` 为准，完整 callback 会校验当前登录 `state`，成功保存后会旋转到新的登录尝试，避免旧 token / 旧回调污染下一次登录
+- OpenAI OAuth 在轮换到新的登录 flow 前会先显式取消并释放旧的 `localhost:1455` 监听，避免手工 fallback 成功后旧 loopback 监听继续占端口，导致下一次浏览器回调无法被捕获
 - 账号排序写入现在要求 payload 覆盖完整账号集且不能重复；partial / stale 排序请求会明确失败，不再静默丢掉未提交账号
 
 ## v0.1.3

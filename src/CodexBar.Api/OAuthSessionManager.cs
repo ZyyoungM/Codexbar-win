@@ -203,6 +203,7 @@ public sealed class OAuthSessionManager
 
     private void StartNewFlowUnsafe(string? statusMessage = null, string? successMessage = null)
     {
+        CancelPendingListenerUnsafe();
         _flow = _client.BeginLogin();
         _capturedTokens = null;
         _isCompleted = false;
@@ -210,6 +211,12 @@ public sealed class OAuthSessionManager
         _errorMessage = null;
         _successMessage = successMessage;
         _statusMessage = statusMessage ?? "已生成新的 OpenAI OAuth 授权链接。";
+    }
+
+    private void CancelPendingListenerUnsafe()
+    {
+        _loopback.CancelPendingWait();
+        _isListening = false;
     }
 
     private void StartListeningUnsafe()

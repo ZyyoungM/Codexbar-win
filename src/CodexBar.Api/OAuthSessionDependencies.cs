@@ -17,6 +17,8 @@ public interface ILoopbackCallbackListener
         string expectedState,
         TimeSpan timeout,
         CancellationToken cancellationToken = default);
+
+    void CancelPendingWait();
 }
 
 internal sealed class OpenAiOAuthClientAdapter : IOpenAiOAuthClient
@@ -43,4 +45,7 @@ internal sealed class LoopbackCallbackListenerAdapter : ILoopbackCallbackListene
         TimeSpan timeout,
         CancellationToken cancellationToken = default)
         => _inner.WaitForCallbackAsync(expectedState, timeout, cancellationToken);
+
+    public void CancelPendingWait()
+        => _inner.CancelPendingWait();
 }

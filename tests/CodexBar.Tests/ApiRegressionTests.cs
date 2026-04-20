@@ -73,6 +73,32 @@ internal static class ApiRegressionTests
         ApiRegressionAssertions.AssertTrue(!retry.Ok, "blank retry should not be able to reuse the previous login result");
     }
 
+    public static async Task OAuthFlowRotationCancelsPendingLoopbackListenerTest()
+    {
+        var client = new FakeOAuthClient();
+        var loopback = new BlockingLoopbackCallbackListener();
+        var manager = new OAuthSessionManager(client, loopback);
+
+        await manager.ListenAsync();
+        ApiRegressionAssertions.AssertTrue(
+            await loopback.Starts.WaitAsync(TimeSpan.FromSeconds(2)),
+            "expected the first localhost listener to start");
+
+        var result = await manager.CompleteAsync(
+            new FrontendOAuthCompleteRequest("manual-callback", "Manual"),
+            (_, _, _) => Task.FromResult(new FrontendCommandResult(true, "saved")),
+            CancellationToken.None);
+
+        ApiRegressionAssertions.AssertTrue(result.Ok, result.Message);
+        ApiRegressionAssertions.AssertEqual(1, loopback.CancelCalls);
+
+        await manager.ListenAsync();
+        ApiRegressionAssertions.AssertTrue(
+            await loopback.Starts.WaitAsync(TimeSpan.FromSeconds(2)),
+            "expected a fresh localhost listener to start after rotating the OAuth flow");
+        ApiRegressionAssertions.AssertEqual(2, loopback.StartCalls);
+    }
+
     public static async Task ReorderAccountsRejectsPartialPayloadTest()
     {
         using var temp = TempDir.Create();
@@ -246,6 +272,50 @@ internal sealed class FakeLoopbackCallbackListener : ILoopbackCallbackListener
             State = expectedState,
             WasFullCallbackUrl = true
         });
+
+    public void CancelPendingWait()
+    {
+    }
+}
+
+internal sealed class BlockingLoopbackCallbackListener : ILoopbackCallbackListener
+{
+    private TaskCompletionSource<ManualCallbackParseResult>? _currentWait;
+    private bool _active;
+
+    public SemaphoreSlim Starts { get; } = new(0);
+    public int StartCalls { get; private set; }
+    public int CancelCalls { get; private set; }
+
+    public Task<ManualCallbackParseResult> WaitForCallbackAsync(
+        string expectedState,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        if (_active)
+        {
+            throw new IOException("Loopback listener is still active.");
+        }
+
+        _active = true;
+        StartCalls++;
+        _currentWait = new TaskCompletionSource<ManualCallbackParseResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Starts.Release();
+        return _currentWait.Task;
+    }
+
+    public void CancelPendingWait()
+    {
+        if (!_active)
+        {
+            return;
+        }
+
+        CancelCalls++;
+        _active = false;
+        _currentWait?.TrySetCanceled();
+        _currentWait = null;
+    }
 }
 
 internal sealed class EnvironmentVariableScope : IDisposable

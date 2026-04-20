@@ -6,7 +6,41 @@ namespace CodexBar.Auth;
 
 public sealed class LoopbackCallbackServer
 {
+    private readonly object _gate = new();
+    private TcpListener? _activeListener;
+    private CancellationTokenSource? _activeWaitCts;
+
     public const int DefaultPort = 1455;
+
+    public void CancelPendingWait()
+    {
+        TcpListener? listener;
+        CancellationTokenSource? waitCts;
+
+        lock (_gate)
+        {
+            listener = _activeListener;
+            waitCts = _activeWaitCts;
+            _activeListener = null;
+            _activeWaitCts = null;
+        }
+
+        try
+        {
+            waitCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
+        try
+        {
+            listener?.Stop();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
 
     public async Task<ManualCallbackParseResult> WaitForCallbackAsync(
         string expectedState,
@@ -17,6 +51,7 @@ public sealed class LoopbackCallbackServer
         timeoutCts.CancelAfter(timeout);
 
         var listener = new TcpListener(IPAddress.Loopback, DefaultPort);
+        RegisterPendingWait(listener, timeoutCts);
         try
         {
             listener.Start();
@@ -47,7 +82,33 @@ public sealed class LoopbackCallbackServer
         }
         finally
         {
+            ClearPendingWait(listener, timeoutCts);
             listener.Stop();
+        }
+    }
+
+    private void RegisterPendingWait(TcpListener listener, CancellationTokenSource waitCts)
+    {
+        lock (_gate)
+        {
+            _activeListener = listener;
+            _activeWaitCts = waitCts;
+        }
+    }
+
+    private void ClearPendingWait(TcpListener listener, CancellationTokenSource waitCts)
+    {
+        lock (_gate)
+        {
+            if (ReferenceEquals(_activeListener, listener))
+            {
+                _activeListener = null;
+            }
+
+            if (ReferenceEquals(_activeWaitCts, waitCts))
+            {
+                _activeWaitCts = null;
+            }
         }
     }
 
