@@ -1,5 +1,16 @@
 # 更新日志
 
+## v0.2.0
+
+- 收敛原生运行形态为“托盘 + 主浮窗 + 独立 Overlay + 独立弹窗”，明确不走网页后台壳 / 路由页路线
+- 新增 `docs/NATIVE_WINDOW_REBUILD.md`，固定窗口层级、弹窗边界与服务接线边界
+- `CodexBar.Win` 新增独立 `OverlayWindow`，并由托盘原生协调主浮窗、Overlay 与 Settings 窗口生命周期
+- 主浮窗改为围绕 Figma 交互模型的原生布局，保持弹窗独立，不进入任务栏页化路径
+- 原生 `MainFlyout` 已重建为 Figma 信息层级：顶部动作区、路由切换、当前激活摘要、可拖动账号卡片与行内操作
+- `Add Compatible`、`OAuth`、`Edit Account`、`Settings` 四个弹窗开始统一到新的原生窗口视觉体系，并补上测试连接 / 授权状态 / 设置分区等关键交互
+- `Overlay` 开始按紧凑浮窗模型重建为独立悬浮窗：保留拖动、展开/收起、快速刷新与快速启动，同时改成更接近 Figma 的轻量信息层级
+- `--open`、`--overlay`、`--settings` 现在会在单实例已运行时转发到主实例处理；`--tray-only` 继续保留给冷启动 / 开机自启场景
+
 ## v0.1.3
 
 补充 GitHub 推送规则与主线发布职责说明。

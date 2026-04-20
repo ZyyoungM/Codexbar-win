@@ -135,6 +135,18 @@ public sealed class OpenAiOfficialUsageService
             ToQuotaSnapshot(weekly, now));
     }
 
+    public async Task<AccountRecord> RefreshAccountAsync(
+        AccountRecord account,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsOfficiallyManagedOpenAiAccount(account))
+        {
+            return account;
+        }
+
+        return await RefreshAccountInternalAsync(account, DateTimeOffset.UtcNow, cancellationToken);
+    }
+
     private async Task<AccountRecord> RefreshAccountInternalAsync(
         AccountRecord account,
         DateTimeOffset fetchedAt,

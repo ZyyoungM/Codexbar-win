@@ -18,14 +18,21 @@ public partial class SettingsWindow : Window
     private readonly AppConfigStore _configStore;
     private readonly StartupRegistration _startup = new();
     private readonly WindowsCredentialSecretStore _secretStore = new();
+    private readonly Func<bool>? _overlayVisibleProvider;
+    private readonly Func<bool, Task>? _overlayVisibilityChanged;
     private AppConfig _config = AppConfigStore.DefaultConfig();
+    private bool _suppressOverlayToggle;
 
-    public SettingsWindow()
+    public SettingsWindow(
+        Func<bool>? overlayVisibleProvider = null,
+        Func<bool, Task>? overlayVisibilityChanged = null)
     {
         InitializeComponent();
         _appPaths = AppPaths.Resolve();
         _appPaths.EnsureDirectories();
         _configStore = new AppConfigStore(_appPaths.ConfigPath);
+        _overlayVisibleProvider = overlayVisibleProvider;
+        _overlayVisibilityChanged = overlayVisibilityChanged;
 
         AccountSortModeBox.ItemsSource = BuildAccountSortModeOptions();
         ActivationBehaviorBox.ItemsSource = BuildActivationBehaviorOptions();
@@ -45,6 +52,8 @@ public partial class SettingsWindow : Window
         CodexDesktopPathBox.Text = _config.Settings.CodexDesktopPath ?? "";
         CodexCliPathBox.Text = _config.Settings.CodexCliPath ?? "";
         StartupBox.IsChecked = _startup.IsEnabled();
+        OverlayEnabledBox.IsEnabled = _overlayVisibilityChanged is not null;
+        SyncOverlayState(_overlayVisibleProvider?.Invoke() == true);
         StatusText.Text = "\u5C31\u7EEA\u3002";
     }
 
@@ -84,6 +93,13 @@ public partial class SettingsWindow : Window
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
         => Close();
+
+    public void SyncOverlayState(bool isVisible)
+    {
+        _suppressOverlayToggle = true;
+        OverlayEnabledBox.IsChecked = isVisible;
+        _suppressOverlayToggle = false;
+    }
 
     private void BrowseDesktop_Click(object sender, RoutedEventArgs e)
     {
@@ -267,6 +283,31 @@ public partial class SettingsWindow : Window
 
     private static string? EmptyToNull(string value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private async void OverlayEnabledBox_Checked(object sender, RoutedEventArgs e)
+        => await ApplyOverlayVisibilityAsync(true);
+
+    private async void OverlayEnabledBox_Unchecked(object sender, RoutedEventArgs e)
+        => await ApplyOverlayVisibilityAsync(false);
+
+    private async Task ApplyOverlayVisibilityAsync(bool isVisible)
+    {
+        if (_suppressOverlayToggle || _overlayVisibilityChanged is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _overlayVisibilityChanged(isVisible);
+            StatusText.Text = isVisible ? "\u5C0F\u6D6E\u7A97\u5DF2\u6253\u5F00\u3002" : "\u5C0F\u6D6E\u7A97\u5DF2\u5173\u95ED\u3002";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = DiagnosticLogger.Redact(ex.Message);
+            SyncOverlayState(_overlayVisibleProvider?.Invoke() == true);
+        }
+    }
 
     private static IReadOnlyList<OptionItem<AccountSortMode>> BuildAccountSortModeOptions()
         =>

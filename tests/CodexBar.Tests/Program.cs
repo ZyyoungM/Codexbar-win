@@ -1,12 +1,22 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using CodexBar.Auth;
 using CodexBar.CodexCompat;
 using CodexBar.Core;
 using CodexBar.Runtime;
+
+if (args.Length > 0 && string.Equals(args[0], "__single-instance-forward__", StringComparison.Ordinal))
+{
+    using var secondary = new SingleInstanceService(args[1]);
+    Environment.ExitCode = !secondary.IsPrimary && secondary.TryNotifyPrimary(args.Skip(2).ToArray())
+        ? 0
+        : 1;
+    return;
+}
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -31,6 +41,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("desktop locator prefers desktop inferred from current cli path", DesktopLocatorPrefersCliInferredDesktopTest),
     ("desktop locator prefers latest packaged Codex version", DesktopLocatorPrefersLatestPackagedVersionTest),
     ("desktop locator detects packaged Codex without configured path", DesktopLocatorDetectsPackagedVersionWithoutConfiguredPathTest),
+    ("startup command resolver keeps single-instance launch semantics", StartupCommandResolverTest),
+    ("single instance service forwards args to primary process", SingleInstanceForwardingTest),
     ("launch service skips process start when write only", LaunchServiceWriteOnlyTest),
     ("launch service starts desktop with clean environment", LaunchServiceDesktopTest),
     ("compatible launch injects active API key", CompatibleLaunchInjectsActiveApiKeyTest),
@@ -94,6 +106,45 @@ static Task DuplicateEnvironmentKeyTest()
     AssertEqual(Path.Combine(temp.Path, ".codexbar"), appPaths.AppRoot);
     AssertEqual(Path.Combine(temp.Path, ".codex"), home.RootPath);
     return Task.CompletedTask;
+}
+
+static Task StartupCommandResolverTest()
+{
+    AssertEqual(StartupCommand.Open, StartupCommandResolver.Resolve([]));
+    AssertEqual(StartupCommand.Open, StartupCommandResolver.Resolve(["--open"]));
+    AssertEqual(StartupCommand.Overlay, StartupCommandResolver.Resolve(["--overlay"]));
+    AssertEqual(StartupCommand.Settings, StartupCommandResolver.Resolve(["--settings"]));
+    AssertEqual(StartupCommand.TrayOnly, StartupCommandResolver.Resolve(["--tray-only"]));
+    AssertEqual(StartupCommand.Settings, StartupCommandResolver.Resolve(["--overlay", "--settings"]));
+    return Task.CompletedTask;
+}
+
+static async Task SingleInstanceForwardingTest()
+{
+    var name = $"Local\\CodexBarWinTest-{Guid.NewGuid():N}";
+    using var primary = new SingleInstanceService(name);
+    AssertTrue(primary.IsPrimary);
+
+    var received = new TaskCompletionSource<string[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+    primary.ArgumentsReceived += args => received.TrySetResult(args);
+
+    var helper = new ProcessStartInfo
+    {
+        FileName = Environment.ProcessPath ?? throw new InvalidOperationException("Missing host process path."),
+        UseShellExecute = false
+    };
+    helper.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
+    helper.ArgumentList.Add("__single-instance-forward__");
+    helper.ArgumentList.Add(name);
+    helper.ArgumentList.Add("--settings");
+
+    using var process = Process.Start(helper) ?? throw new InvalidOperationException("Failed to start helper process.");
+    await process.WaitForExitAsync();
+    AssertEqual(0, process.ExitCode);
+
+    var completed = await Task.WhenAny(received.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+    AssertTrue(ReferenceEquals(completed, received.Task), "primary instance did not receive forwarded args");
+    AssertSequenceEqual(["--settings"], await received.Task);
 }
 
 static Task TomlEditorTest()
@@ -1342,6 +1393,22 @@ static void AssertDoesNotContain(string text, string value)
     if (text.Contains(value, StringComparison.Ordinal))
     {
         throw new Exception($"Expected text not to contain {value}.");
+    }
+}
+
+static void AssertSequenceEqual(IReadOnlyList<string> expected, IReadOnlyList<string> actual)
+{
+    if (expected.Count != actual.Count)
+    {
+        throw new Exception($"Expected sequence length {expected.Count}, actual {actual.Count}.");
+    }
+
+    for (var index = 0; index < expected.Count; index++)
+    {
+        if (!string.Equals(expected[index], actual[index], StringComparison.Ordinal))
+        {
+            throw new Exception($"Expected sequence item {index} to be '{expected[index]}', actual '{actual[index]}'.");
+        }
     }
 }
 

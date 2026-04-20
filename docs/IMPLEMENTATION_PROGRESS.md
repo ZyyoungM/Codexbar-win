@@ -1,6 +1,6 @@
 # CodexBar Windows Implementation Progress
 
-Last updated: 2026-04-18
+Last updated: 2026-04-20
 
 This file is the project progress ledger. Whenever a feature is added, changed, removed, or meaningfully fixed, update this document in the same change.
 
@@ -22,7 +22,7 @@ Non-negotiable behavior:
 - account changes affect new sessions only
 - OpenAI OAuth keeps the browser + localhost callback model with manual paste fallback
 
-The current implementation is a working MVP with a deliberately simple WPF shell for manual testing. Backend services are intended to survive later UI replacement.
+The current implementation is a working MVP with a native tray-window model (`MainFlyout` + independent `Overlay` + popup windows) for manual testing. Backend services are intended to survive later UI replacement.
 
 ## Feature Status
 
@@ -42,14 +42,17 @@ The current implementation is a working MVP with a deliberately simple WPF shell
 | Account edit UI | `[x]` | Temporary UI can edit labels; compatible providers can edit internal Provider ID, Codex Provider ID, name, base URL, and API key. |
 | Manual account ordering | `[x]` | `ManualOrder` is persisted and temporary UI supports Up/Down. |
 | Usage-based ordering | `[~]` | Ordering prefers official OpenAI quota pressure when present, then local usage history. Attribution still depends on recorded successful switch journal entries. |
-| CSV export/import | `[x]` | Backend and temporary Settings UI exist. Default export excludes secrets; explicit secret export is supported. |
+| CSV export/import | `[x]` | Backend and native Settings popup both exist. Default export excludes secrets; explicit secret export is supported. |
 | Windows Credential Manager | `[x]` | API keys and OAuth tokens are persisted through Credential Manager. |
 | Local usage scanner | `[~]` | Scans `sessions` and `archived_sessions`, exposes Today / Last 7 Days / Last 30 Days / Lifetime totals, attributes sessions by switch intervals, and auto-refreshes every minute while the main flyout is open. Cost pricing is still placeholder. |
 | Locked session file handling | `[x]` | Scanner uses shared read and skips unreadable active files. |
-| Tray host | `[~]` | Basic tray icon, left-click flyout, right-click menu, settings entry, and Launch Codex action exist. Icon/art and packaging still need work. |
-| Temporary WPF shell | `[x]` | Main, Settings, OAuth, Add Compatible, and Edit windows are resizable and scrollable. UI is localized to Chinese for easier manual testing. |
-| Main flyout action feedback | `[x]` | Refresh / switch / save / delete / launch flows show in-progress and completion/failure feedback. Controls are temporarily disabled while operations are running. |
+| Tray host | `[~]` | Tray host now coordinates left-click main flyout, right-click menu actions, direct overlay toggling, and warm-start command handoff. Icon/art and packaging still need work. |
+| Native window hierarchy | `[x]` | `CodexBar.Win` now uses an explicit native surface model: tray host, `MainFlyout`, independent `Overlay`, and separate popup windows for Settings / OAuth / Add Compatible / Edit Account. The runtime entry stays native and does not collapse these surfaces into route pages. |
+| Temporary WPF shell | `[x]` | Main flyout and popup windows remain native WPF surfaces for now, with shared state between the main flyout and overlay. UI is still optimized for manual testing rather than final polish. |
+| Figma visual baseline | `[~]` | The current native rebuild follows the imported Figma hierarchy as a visual and interaction reference only. The candidate runtime remains the native WPF shell rather than a browser-style host. |
+| Main flyout action feedback | `[x]` | Refresh / switch / save / delete / launch flows show in-progress and completion/failure feedback. The account list now stays interactive during refresh-oriented operations instead of being blanket-disabled. |
 | Startup registration | `[~]` | Registry startup toggle exists. Current startup target still depends on development-style executable layout. |
+| Single-instance startup command forwarding | `[x]` | Secondary launches now forward `--open`, `--overlay`, and `--settings` into the running primary instance. `--tray-only` remains a cold-start / startup-registration path. |
 | Codex Desktop / CLI path settings | `[x]` | Config model, CLI, Settings UI, detection, and launch fallback are wired. GUI launch re-syncs active account into `config.toml` / `auth.json` before starting Codex, Desktop launch cleans inherited Codex/Electron internal environment variables, and Desktop detection prefers the newest WindowsApps / MSIX Codex package instead of a stale version-pinned path. |
 | Activation behavior setting | `[x]` | `WriteConfigOnly` and `LaunchNewCodex` are both wired. |
 | OpenAI manual / aggregate mode | `[~]` | `ManualSwitch` works directly. `AggregateGateway` currently performs activation-time OpenAI auto-routing; it is not yet a live request proxy. |
@@ -61,17 +64,17 @@ The current implementation is a working MVP with a deliberately simple WPF shell
 Latest verified commands:
 
 ```powershell
+.\build.ps1
 .\test.ps1
-.\run-cli.ps1 help
-.\package.ps1
+git diff --check
 ```
 
 Latest known result:
 
 ```text
-tests: 31 passed
-cli: help command runs successfully
-package: portable v0.1.2 directory and zip generated
+build: succeeded
+tests: 33 passed
+diff-check: clean
 ```
 
 Current automated coverage includes:
@@ -169,6 +172,17 @@ Enable aggregate mode in app config:
 ```
 
 ## Recent Change Log
+
+### 2026-04-20
+
+- Bumped project version metadata to `0.2.0` and aligned the current release candidate around the native-window rebuild track.
+- Added `docs/NATIVE_WINDOW_REBUILD.md` to lock the Windows-native runtime model to tray host + `MainFlyout` + independent `Overlay` + popup dialogs.
+- Reworked `CodexBar.Win` so tray state, main flyout, overlay, and settings window are coordinated from the native app shell instead of being treated as unrelated test windows.
+- Added a native `OverlayWindow` with shared active-account state, compact/expanded presentation, refresh, and launch actions.
+- Refreshed the native `FlyoutWindow` layout around the Figma interaction model and wired popup windows as independent dialog surfaces instead of taskbar-style pages.
+- Added `Edit Account` popup dialog and connected it end-to-end (main flyout edit action -> API update/probe path).
+- Kept popup-window interaction model for `Settings`, `OAuth`, `Add Compatible Provider`, and `Edit Account` (no route-page replacement).
+- Added single-instance command forwarding so `--open`, `--overlay`, and `--settings` are handled by the running primary instance instead of being limited to cold start.
 
 ### 2026-04-18
 

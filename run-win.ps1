@@ -20,4 +20,13 @@ if (!(Test-Path $exe)) {
 $env:DOTNET_ROOT = $dotnetRoot
 $env:PATH = "$dotnetRoot;$env:PATH"
 
-Start-Process -FilePath $exe -ArgumentList $AppArgs -WorkingDirectory (Split-Path -Parent $exe)
+$startInfo = @{
+    FilePath = $exe
+    WorkingDirectory = (Split-Path -Parent $exe)
+}
+
+if ($null -ne $AppArgs -and $AppArgs.Count -gt 0) {
+    $startInfo.ArgumentList = $AppArgs
+}
+
+Start-Process @startInfo

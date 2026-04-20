@@ -1,6 +1,6 @@
 # CodexBar for Windows
 
-当前版本：`v0.1.3`
+当前版本：`v0.2.0`
 
 CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/lizhelang/codexbar) 的 Windows 原生移植版。它的目标不是重做 Codex，而是在 Windows 上提供一个更顺手的账号与 Provider 切换入口，让你在**不拆分本地 `.codex` 历史池**的前提下管理 OpenAI 官方账号和第三方兼容接口。
 
@@ -17,6 +17,9 @@ CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/
 
 ## 核心能力
 
+- 运行形态收敛为“托盘 + 主浮窗 + 独立 Overlay + 独立弹窗”，不把弹窗改成路由页
+- 主浮窗已按 Figma 交互层级重建为原生浮窗：顶部动作区、路由切换、当前激活摘要与可拖动账号卡片
+- Figma 导出的重建基线仅作为视觉与交互参考，不作为最终 Windows 运行入口
 - 管理多个 OpenAI OAuth 账号
 - 管理多个 OpenAI-compatible Provider 和多组 API Key
 - 切换账号时原子写入 `config.toml` / `auth.json`
@@ -25,6 +28,7 @@ CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/
 - 只读刷新 OpenAI 官方套餐 / 额度信息
 - 从 GUI 直接启动 Codex，并在兼容 Provider 场景下注入当前 API Key
 - 支持基础托盘交互、设置页、OAuth 登录窗口和兼容 Provider 管理窗口
+- 单实例已运行时，`--open` / `--overlay` / `--settings` 会转发到主实例执行
 
 ## 兼容性承诺
 
@@ -49,8 +53,8 @@ CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/
 
 默认会生成：
 
-- 目录包：`artifacts\package\CodexBar-portable-win-x64-v0.1.3\`
-- 压缩包：`artifacts\package\CodexBar-portable-win-x64-v0.1.3.zip`
+- 目录包：`artifacts\package\CodexBar-portable-win-x64-v0.2.0\`
+- 压缩包：`artifacts\package\CodexBar-portable-win-x64-v0.2.0.zip`
 
 进入目录包后，优先使用：
 
@@ -143,14 +147,15 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 
 - 详细变更：`CHANGELOG.md`
 - 实现状态：`docs/IMPLEMENTATION_PROGRESS.md`
+- 原生窗口迁移说明：`docs/NATIVE_WINDOW_REBUILD.md`
 - 协作 / 交接 / 发布规则：`docs/THREAD_WORKFLOW.md`
 
 ## 版本更新摘要
 
 `README.md` 只保留相对上个版本的简要说明，详细变更请看 `CHANGELOG.md`。
 
-### v0.1.3 - 2026-04-18
+### v0.2.0 - 2026-04-20
 
-- 本次没有新增主要用户功能，重点是发布整理与文档收口
-- README 已改为以软件用户为主，内部协作和发布流程细节移至 `docs/THREAD_WORKFLOW.md`
-- 当前版本的文档、版本号和发布检查项已经按现有工作流整理
+- 运行模型统一为托盘 + 主浮窗 + 独立 Overlay + 独立弹窗，继续保持 Windows 原生窗口形态
+- `--open` / `--overlay` / `--settings` 在单实例已运行场景下会转发到主实例，不再只在冷启动时生效
+- Settings / OAuth / Add Compatible Provider / Edit Account 继续保持独立弹窗，不改造成路由页
