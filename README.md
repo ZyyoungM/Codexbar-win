@@ -1,4 +1,4 @@
-# CodexBar for Windows
+﻿# CodexBar for Windows
 
 当前版本：`v0.2.1`
 
@@ -6,7 +6,7 @@ CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/
 
 一句话说明：
 
-**用一个 Windows 托盘工具，安全切换当前激活的 Codex 账号 / Provider，并直接启动 Codex。**
+**一个Windows托盘工具，可以在切换codex账号/第三方API的同时，不丢session会话历史记录，并使用小浮窗支持额度/用量管理。**
 
 ## 适合谁
 
@@ -28,18 +28,14 @@ CodexBar for Windows 的日常交互主要围绕两类界面展开：
 
 ## 核心能力
 
-- 运行形态收敛为“托盘 + 主浮窗 + 独立 Overlay + 独立弹窗”，不把弹窗改成路由页
-- 主浮窗已按 Figma 交互层级重建为原生浮窗：顶部动作区、路由切换、当前激活摘要与可拖动账号卡片
-- Figma 导出的重建基线仅作为视觉与交互参考，不作为最终 Windows 运行入口
 - 管理多个 OpenAI OAuth 账号
 - 管理多个 OpenAI-compatible Provider 和多组 API Key
 - 切换账号时原子写入 `config.toml` / `auth.json`
-- 保持共享 `sessions` / `archived_sessions` 历史池不被拆分
+- 保持共享 `sessions` / `archived_sessions` 历史池不被拆分，即不丢历史记录
 - 查看本地 usage 统计（今日 / 近 7 天 / 近 30 天 / 累计）
 - 只读刷新 OpenAI 官方套餐 / 额度信息
 - 从 GUI 直接启动 Codex，并在兼容 Provider 场景下注入当前 API Key
 - 支持基础托盘交互、设置页、OAuth 登录窗口和兼容 Provider 管理窗口
-- 单实例已运行时，`--open` / `--overlay` / `--settings` 会转发到主实例执行
 
 ## 兼容性承诺
 
@@ -49,14 +45,18 @@ CodexBar for Windows 的日常交互主要围绕两类界面展开：
 - 共用同一个 `sessions` 和 `archived_sessions`
 - 切换时只更新当前激活态的 `config.toml` 和 `auth.json`
 - 不复制历史、不重写历史、不按账号拆分 `.codex`
-- 切换只影响**新启动**的 Codex 会话
-- OpenAI OAuth 继续使用外部浏览器 + localhost 回调，并保留手工粘贴 callback URL / `code` 的 fallback
 
 ## 快速开始
 
 ### 方式一：推荐使用便携包（下载后即用）
 
 如果你只是想直接使用 CodexBar，推荐优先使用便携包。
+
+拿到压缩包后，按下面 3 步即可开始使用：
+
+1. 解压 `CodexBar-portable-win-x64-v0.2.1.zip`
+2. 进入解压后的目录
+3. 双击 `start-codexbar.cmd`
 
 如果你在本仓库本地打包，请运行：
 
@@ -69,11 +69,7 @@ CodexBar for Windows 的日常交互主要围绕两类界面展开：
 - 目录包：`artifacts\package\CodexBar-portable-win-x64-v0.2.1\`
 - 压缩包：`artifacts\package\CodexBar-portable-win-x64-v0.2.1.zip`
 
-拿到压缩包后，按下面 3 步即可开始使用：
-
-1. 解压 `CodexBar-portable-win-x64-v0.2.1.zip`
-2. 进入解压后的目录
-3. 双击 `start-codexbar.cmd`
+拿到压缩包后同上。
 
 目录里最常用的两个入口是：
 
@@ -159,13 +155,6 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 - **兼容 Provider 的连通性探测基于 `/models`。** 如果探测失败，先检查 `Base URL` 是否缺少 `/v1`。
 - **本地 API 的浏览器访问只信任受控 loopback origin。** 当前只允许 `http://127.0.0.1:5057` / `http://localhost:5057` / `http://127.0.0.1:5173` / `http://localhost:5173` / `http://127.0.0.1:4173` / `http://localhost:4173`；这样保留本地 API 自身和前端重建开发/预览入口，同时阻止任意网页跨站读写本地 API。
 
-## 当前限制
-
-- 还没有 GitHub Releases 更新检测
-- 还没有真正的自更新 / 安装器（MSIX / MSI）
-- OpenAI 聚合网关目前是激活时路由，不是真正的实时代理
-- usage 成本估算仍然是占位方案
-- UI 仍以 MVP 可用性优先，后续还会继续整理
 
 ## 开发者补充
 
