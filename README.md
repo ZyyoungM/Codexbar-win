@@ -1,14 +1,3 @@
-**界面预览**
-
-CodexBar for Windows 的日常交互主要围绕两类界面展开：
-
-- **主浮窗**：集中承载账号 / Provider 管理、启动 Codex、查看当前激活对象与进入设置，是完整的高频操作入口。
-- **小浮窗**：作为轻量常驻视图，适合快速确认当前激活的 Provider、usage 摘要和最近刷新状态；展开后还能继续查看更细的 usage 明细与当前模式。
-
-| 主浮窗 | 小浮窗（默认） | 小浮窗（展开） |
-| --- | --- | --- |
-| ![主浮窗界面](docs/images/preview-main-window.png) | ![小浮窗默认视图](docs/images/preview-mini-window-collapsed.png) | ![小浮窗展开视图](docs/images/preview-mini-window-expanded.png) |
-
 # CodexBar for Windows
 
 当前版本：`v0.2.1`
@@ -25,6 +14,17 @@ CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/
 - 你希望在多个 OpenAI 账号之间快速切换
 - 你需要接入 OpenAI-compatible Provider / 第三方 API 中转站
 - 你不想为了切账号而拆出多个独立 `~/.codex`
+
+## 界面预览
+
+CodexBar for Windows 的日常交互主要围绕两类界面展开：
+
+- **主浮窗**：集中承载账号 / Provider 管理、启动 Codex、查看当前激活对象与进入设置，是完整的高频操作入口。
+- **小浮窗**：作为轻量常驻视图，适合快速确认当前激活的 Provider、usage 摘要和最近刷新状态；展开后还能继续查看更细的 usage 明细与当前模式。
+
+| 主浮窗 | 小浮窗（默认） | 小浮窗（展开） |
+| --- | --- | --- |
+| ![主浮窗界面](docs/images/preview-main-window.png) | ![小浮窗默认视图](docs/images/preview-mini-window-collapsed.png) | ![小浮窗展开视图](docs/images/preview-mini-window-expanded.png) |
 
 ## 核心能力
 
@@ -176,6 +176,10 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 - 原生窗口迁移说明：`docs/NATIVE_WINDOW_REBUILD.md`
 - 协作 / 交接 / 发布规则：`docs/THREAD_WORKFLOW.md`
 
+## 致谢
+
+本项目的 Windows 版本移植工作，基于原始 macOS 项目 [`lizhelang/codexbar`](https://github.com/lizhelang/codexbar) 的产品思路与实现探索推进，在此致谢。
+
 ## 版本更新摘要
 
 `README.md` 只保留相对上个版本的简要说明，详细变更请看 `CHANGELOG.md`。
@@ -185,3 +189,7 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 - 修复手工 OAuth fallback 成功后旧 `localhost:1455` 监听未及时释放的问题，避免后续登录因端口占用而失败
 - 原生 `OAuthDialog` 在手工完成、取消关闭和窗口关闭时都会主动释放 loopback 监听，减少同类端口残留
 - 便携包说明改成“下载后即用”口径，解压后直接使用 `start-codexbar.cmd` / `open-settings.cmd` 即可开始使用
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
