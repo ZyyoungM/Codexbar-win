@@ -1,6 +1,6 @@
 # CodexBar for Windows
 
-当前版本：`v0.2.0`
+当前版本：`v0.2.1`
 
 CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/lizhelang/codexbar) 的 Windows 原生移植版。它的目标不是重做 Codex，而是在 Windows 上提供一个更顺手的账号与 Provider 切换入口，让你在**不拆分本地 `.codex` 历史池**的前提下管理 OpenAI 官方账号和第三方兼容接口。
 
@@ -55,12 +55,12 @@ CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/
 
 默认会生成：
 
-- 目录包：`artifacts\package\CodexBar-portable-win-x64-v0.2.0\`
-- 压缩包：`artifacts\package\CodexBar-portable-win-x64-v0.2.0.zip`
+- 目录包：`artifacts\package\CodexBar-portable-win-x64-v0.2.1\`
+- 压缩包：`artifacts\package\CodexBar-portable-win-x64-v0.2.1.zip`
 
 拿到压缩包后，按下面 3 步即可开始使用：
 
-1. 解压 `CodexBar-portable-win-x64-v0.2.0.zip`
+1. 解压 `CodexBar-portable-win-x64-v0.2.1.zip`
 2. 进入解压后的目录
 3. 双击 `start-codexbar.cmd`
 
@@ -169,8 +169,8 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 
 `README.md` 只保留相对上个版本的简要说明，详细变更请看 `CHANGELOG.md`。
 
-### v0.2.0 - 2026-04-20
+### v0.2.1 - 2026-04-20
 
-- 运行模型统一为托盘 + 主浮窗 + 独立 Overlay + 独立弹窗，继续保持 Windows 原生窗口形态
-- `--open` / `--overlay` / `--settings` 在单实例已运行场景下会转发到主实例，不再只在冷启动时生效
-- Settings / OAuth / Add Compatible Provider / Edit Account 继续保持独立弹窗，不改造成路由页
+- 修复手工 OAuth fallback 成功后旧 `localhost:1455` 监听未及时释放的问题，避免后续登录因端口占用而失败
+- 原生 `OAuthDialog` 在手工完成、取消关闭和窗口关闭时都会主动释放 loopback 监听，减少同类端口残留
+- 便携包说明改成“下载后即用”口径，解压后直接使用 `start-codexbar.cmd` / `open-settings.cmd` 即可开始使用

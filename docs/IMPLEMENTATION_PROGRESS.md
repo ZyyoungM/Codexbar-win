@@ -180,6 +180,8 @@ Enable aggregate mode in app config:
 
 ### 2026-04-20
 
+- Bumped project version metadata to `0.2.1`, aligned the portable package/release docs to the formal release version, and kept the final published entry on the latest `main` baseline instead of the earlier `v0.2.0` candidate tag.
+- Fixed OAuth flow rotation so manual fallback success explicitly cancels and releases the stale `localhost:1455` loopback listener before the next login attempt starts; the native `OAuthDialog` now mirrors the same listener-release lifecycle on complete/cancel/close.
 - Bumped project version metadata to `0.2.0` and aligned the current release candidate around the native-window rebuild track.
 - Added `docs/NATIVE_WINDOW_REBUILD.md` to lock the Windows-native runtime model to tray host + `MainFlyout` + independent `Overlay` + popup dialogs.
 - Reworked `CodexBar.Win` so tray state, main flyout, overlay, and settings window are coordinated from the native app shell instead of being treated as unrelated test windows.

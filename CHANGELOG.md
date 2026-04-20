@@ -1,5 +1,11 @@
 # 更新日志
 
+## v0.2.1
+
+- 修复 OpenAI OAuth 手工 fallback 成功后旧 `localhost:1455` loopback 监听未及时取消的问题，避免轮换到下一次登录 flow 时端口仍被占用
+- 原生 `OAuthDialog` 现在会在手工完成、取消关闭和窗口关闭时显式释放 loopback 监听，避免桌面弹窗路径残留同类端口占用
+- 调整 `README.md` 和便携包内启动说明，明确 `CodexBar-portable-win-x64-v0.2.1.zip` 解压后可直接双击 `start-codexbar.cmd` / `open-settings.cmd` 使用
+
 ## v0.2.0
 
 - 收敛原生运行形态为“托盘 + 主浮窗 + 独立 Overlay + 独立弹窗”，明确不走网页后台壳 / 路由页路线
