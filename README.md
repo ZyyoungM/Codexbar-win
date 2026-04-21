@@ -26,31 +26,11 @@ CodexBar for Windows 的日常交互主要围绕两类界面展开：
 | --- | --- | --- |
 | ![主浮窗界面](docs/images/preview-main-window.png) | ![小浮窗默认视图](docs/images/preview-mini-window-collapsed.png) | ![小浮窗展开视图](docs/images/preview-mini-window-expanded.png) |
 
-## 核心能力
-
-- 管理多个 OpenAI OAuth 账号
-- 管理多个 OpenAI-compatible Provider 和多组 API Key
-- 切换账号时原子写入 `config.toml` / `auth.json`
-- 保持共享 `sessions` / `archived_sessions` 历史池不被拆分，即不丢历史记录
-- 查看本地 usage 统计（今日 / 近 7 天 / 近 30 天 / 累计）
-- 只读刷新 OpenAI 官方套餐 / 额度信息
-- 从 GUI 直接启动 Codex，并在兼容 Provider 场景下注入当前 API Key
-- 支持基础托盘交互、设置页、OAuth 登录窗口和兼容 Provider 管理窗口
-
-## 兼容性承诺
-
-这是这个项目最重要的行为边界：
-
-- 共用同一个 `CODEX_HOME` / `~/.codex`
-- 共用同一个 `sessions` 和 `archived_sessions`
-- 切换时只更新当前激活态的 `config.toml` 和 `auth.json`
-- 不复制历史、不重写历史、不按账号拆分 `.codex`
-
 ## 快速开始
 
 ### 方式一：推荐使用便携包（下载后即用）
 
-如果你只是想直接使用 CodexBar，推荐优先使用便携包。
+如果你只是想直接使用 CodexBar，推荐优先使用便携包，直接去release下载CodexBar-portable-win-x64-v0.2.1.zip。
 
 拿到压缩包后，按下面 3 步即可开始使用：
 
@@ -58,27 +38,10 @@ CodexBar for Windows 的日常交互主要围绕两类界面展开：
 2. 进入解压后的目录
 3. 双击 `start-codexbar.cmd`
 
-如果你在本仓库本地打包，请运行：
-
-```powershell
-.\package.ps1
-```
-
-默认会生成：
-
-- 目录包：`artifacts\package\CodexBar-portable-win-x64-v0.2.1\`
-- 压缩包：`artifacts\package\CodexBar-portable-win-x64-v0.2.1.zip`
-
-拿到压缩包后同上。
-
-目录里最常用的两个入口是：
-
-- `start-codexbar.cmd`
-- `open-settings.cmd`
-
 说明：
 
-- 便携包内已经带有本地 `.NET` 运行时，不需要额外安装全局 `.NET`
+- 如果本地已经安装了`.NET 8 SDK`，也可以直接双击`CodexBar.Win.exe`打开
+- 便携包内已经带有本地 `.NET`，运行时，不需要额外安装全局 `.NET`
 - 首次启动后，CodexBar 会以托盘工具形式常驻；如果没看到主窗口，请留意系统托盘区
 - 如果你想先配置账号、Provider 或 Overlay，直接双击 `open-settings.cmd`
 
@@ -109,6 +72,30 @@ CodexBar for Windows 的日常交互主要围绕两类界面展开：
 ```powershell
 dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 ```
+
+## 核心能力
+
+- 管理多个 OpenAI OAuth 账号
+- 管理多个 OpenAI-compatible Provider 和多组 API Key
+- 切换账号时原子写入 `config.toml` / `auth.json`
+- 保持共享 `sessions` / `archived_sessions` 历史池不被拆分，即不丢历史记录
+- 查看本地 usage 统计（今日 / 近 7 天 / 近 30 天 / 累计）
+- 只读刷新 OpenAI 官方套餐 / 额度信息
+- 从 GUI 直接启动 Codex，并在兼容 Provider 场景下注入当前 API Key
+- 支持基础托盘交互、设置页、OAuth 登录窗口和兼容 Provider 管理窗口
+
+## 兼容性承诺
+
+这是这个项目最重要的行为边界：
+
+- 共用同一个 `CODEX_HOME` / `~/.codex`
+- 共用同一个 `sessions` 和 `archived_sessions`
+- 切换时只更新当前激活态的 `config.toml` 和 `auth.json`
+- 不复制历史、不重写历史、不按账号拆分 `.codex`
+
+## 环境依赖
+1. `.NET 8 SDK x64`，已经被打包在便携包里面了
+2. `Node.js + npm`，可以让codex帮你装
 
 ## 常见使用方式
 
