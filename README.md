@@ -1,4 +1,7 @@
-﻿# CodexBar for Windows
+[![ZH-CN](https://img.shields.io/badge/lang-ZH--CN-0F6CBD)](./README.md)
+[![English](https://img.shields.io/badge/lang-English-0F6CBD)](./README.en.md)
+
+# CodexBar for Windows
 
 当前版本：`v0.2.1`
 
@@ -142,15 +145,14 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 - **兼容 Provider 的连通性探测基于 `/models`。** 如果探测失败，先检查 `Base URL` 是否缺少 `/v1`。
 - **本地 API 的浏览器访问只信任受控 loopback origin。** 当前只允许 `http://127.0.0.1:5057` / `http://localhost:5057` / `http://127.0.0.1:5173` / `http://localhost:5173` / `http://127.0.0.1:4173` / `http://localhost:4173`；这样保留本地 API 自身和前端重建开发/预览入口，同时阻止任意网页跨站读写本地 API。
 
-
 ## 开发者补充
 
 如果你是来参与开发或查看实现细节，建议直接看：
 
-- 详细变更：`CHANGELOG.md`
-- 实现状态：`docs/IMPLEMENTATION_PROGRESS.md`
-- 原生窗口迁移说明：`docs/NATIVE_WINDOW_REBUILD.md`
-- 协作 / 交接 / 发布规则：`docs/THREAD_WORKFLOW.md`
+- 详细变更：[CHANGELOG.md](./CHANGELOG.md)
+- 实现状态：[docs/IMPLEMENTATION_PROGRESS.md](./docs/IMPLEMENTATION_PROGRESS.md)
+- 原生窗口迁移说明：[docs/NATIVE_WINDOW_REBUILD.md](./docs/NATIVE_WINDOW_REBUILD.md)
+- 协作 / 交接 / 发布规则：[docs/THREAD_WORKFLOW.md](./docs/THREAD_WORKFLOW.md)
 
 ## 致谢
 
@@ -158,7 +160,7 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 
 ## 版本更新摘要
 
-`README.md` 只保留相对上个版本的简要说明，详细变更请看 `CHANGELOG.md`。
+`README.md` 只保留相对上个版本的简要说明，详细变更请看 [CHANGELOG.md](./CHANGELOG.md)。
 
 ### v0.2.1 - 2026-04-20
 
