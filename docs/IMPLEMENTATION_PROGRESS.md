@@ -178,6 +178,15 @@ Enable aggregate mode in app config:
 
 ## Recent Change Log
 
+### 2026-04-23
+
+- Bumped project version metadata to `0.3.0` and aligned README / CHANGELOG / portable package naming around `CodexBar-portable-win-x64-v0.3.0`.
+- Added the main flyout switch / launch / restart flow: switch-only affects new sessions, launch starts Codex when it is not running, and restart asks before closing Codex Desktop window/background processes.
+- Added restart confirmation suppression plus a Settings action to restore the prompt; CodexBar itself is excluded from Codex Desktop background-process cleanup.
+- Added tray right-click quick account/API selection with current-account display and compact official OpenAI quota labels.
+- Added Settings navigation pages, About diagnostics, auto-open overlay on startup, and refreshed import/export wording.
+- Added session-history ZIP export/import across native Settings, CLI, local API, frontend rebuild, and regression tests while preserving the shared `.codex` history pool semantics.
+
 ### 2026-04-20
 
 - Bumped project version metadata to `0.2.1`, aligned the portable package/release docs to the formal release version, and kept the final published entry on the latest `main` baseline instead of the earlier `v0.2.0` candidate tag.

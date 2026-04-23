@@ -182,6 +182,49 @@ public sealed class FrontendBackendService
         }
     }
 
+    public async Task<(string FileName, byte[] Content)> ExportHistoryZipAsync(bool includeArchived, CancellationToken cancellationToken = default)
+    {
+        var fileName = $"codexbar-history-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.zip";
+        var tempPath = Path.Combine(Path.GetTempPath(), $"codexbar-history-{Guid.NewGuid():N}.zip");
+        try
+        {
+            await new SessionArchiveService(_appPaths)
+                .ExportAsync(_homeLocator.Resolve(), tempPath, new SessionArchiveExportOptions(includeArchived), cancellationToken);
+            var content = await File.ReadAllBytesAsync(tempPath, cancellationToken);
+            return (fileName, content);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
+    }
+
+    public async Task<FrontendCommandResult> ImportHistoryZipAsync(Stream content, CancellationToken cancellationToken = default)
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), $"codexbar-history-import-{Guid.NewGuid():N}.zip");
+        await using (var file = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            await content.CopyToAsync(file, cancellationToken);
+        }
+
+        try
+        {
+            var result = await new SessionArchiveService(_appPaths)
+                .ImportAsync(_homeLocator.Resolve(), tempPath, cancellationToken);
+            return new FrontendCommandResult(true, $"已导入历史会话 ZIP。{SessionArchiveService.FormatImportSummary(result)}");
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
+    }
+
     public async Task<FrontendCommandResult> ActivateAccountAsync(
         string providerId,
         string accountId,
@@ -724,6 +767,8 @@ public sealed class FrontendBackendService
             _probeStatusStore.Resolve(account),
             isOpenAi ? NormalizePercent(account.FiveHourQuota) : null,
             isOpenAi ? NormalizePercent(account.WeeklyQuota) : null,
+            isOpenAi ? OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.FiveHourQuota, "5h 额度") : null,
+            isOpenAi ? OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.WeeklyQuota, "周额度") : null,
             isOpenAi ? null : usage?.Today.TotalTokens,
             isOpenAi ? null : usage?.Last7Days.TotalTokens,
             isOpenAi ? null : usage?.Last30Days.TotalTokens);

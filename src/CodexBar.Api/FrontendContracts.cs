@@ -20,6 +20,8 @@ public sealed record FrontendAccountDto(
     FrontendConnectionStatus Status,
     int? Usage5h,
     int? UsageWeekly,
+    string? Usage5hRefreshText,
+    string? UsageWeeklyRefreshText,
     long? UsageDaily,
     long? UsageWeeklyTokens,
     long? UsageMonthly);

@@ -3,7 +3,7 @@
 
 # CodexBar for Windows
 
-Current version: `v0.2.1`
+Current version: `v0.3.0`
 
 CodexBar for Windows is a Windows-native port of the macOS project [`lizhelang/codexbar`](https://github.com/lizhelang/codexbar). The goal is not to rebuild Codex itself, but to provide a smoother Windows entry point for switching accounts and providers while letting you manage official OpenAI accounts and third-party compatible APIs **without splitting the local `.codex` history pool**.
 
@@ -33,11 +33,11 @@ The day-to-day experience of CodexBar for Windows mainly revolves around two UI 
 
 ### Option 1: Recommended portable package (download and run)
 
-If you just want to use CodexBar directly, the recommended path is to download `CodexBar-portable-win-x64-v0.2.1.zip` from the release page.
+If you just want to use CodexBar directly, the recommended path is to download `CodexBar-portable-win-x64-v0.3.0.zip` from the release page.
 
 After downloading the archive, you can get started in 3 steps:
 
-1. Extract `CodexBar-portable-win-x64-v0.2.1.zip`
+1. Extract `CodexBar-portable-win-x64-v0.3.0.zip`
 2. Open the extracted folder
 3. Double-click `start-codexbar.cmd`
 
@@ -84,8 +84,10 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 - Keep the shared `sessions` / `archived_sessions` history pool intact so session history is not lost
 - View local usage stats (today / last 7 days / last 30 days / lifetime)
 - Refresh official OpenAI plan / quota information in read-only mode
-- Launch Codex directly from the GUI and inject the active API key for compatible providers
-- Support basic tray interactions, the Settings page, the OAuth login window, and the compatible-provider management window
+- Launch or explicitly restart Codex from the GUI and inject the active API key for compatible providers
+- Quickly view and switch the current account/API from the tray right-click menu
+- Export/import account configuration and session-history ZIP archives from Settings
+- Support basic tray interactions, paged Settings, the OAuth login window, and the compatible-provider management window
 
 ## Compatibility Commitments
 
@@ -137,10 +139,28 @@ The current version supports:
 
 These numbers are meant to help you decide which account to switch to, not to serve as a precise billing system.
 
+### 4. Export / import session history
+
+The Settings page includes a "History ZIP" export/import flow:
+
+- The default archive name is `codexbar-history-*.zip`
+- The archive only contains `sessions/`, `archived_sessions`, and `session_index.jsonl`
+- It does not contain `config.toml`, `auth.json`, account CSV data, OAuth tokens, or API keys
+- Import merges history: identical files are skipped, and path conflicts are saved as `.imported-N.jsonl`
+- Import does not change the currently active account; it only affects the recoverable Codex session list
+- Close running Codex processes before importing when possible, so external processes are not writing the index at the same time
+
+The CLI exposes the same flow:
+
+```powershell
+dotnet run --project .\src\CodexBar.Cli\CodexBar.Cli.csproj -- export-history --path .\codexbar-history.zip
+dotnet run --project .\src\CodexBar.Cli\CodexBar.Cli.csproj -- import-history --path .\codexbar-history.zip
+```
+
 ## Usage Notes
 
 - **Switching only affects new sessions.** Running Codex processes are not rewritten in place.
-- **If Codex Desktop is already open, fully exit it first, then launch it again from CodexBar.** Environment variables only flow into new processes.
+- **If Codex Desktop is already open, the main flyout launch path asks before restarting it.** After confirmation, CodexBar closes the current window and background process, then starts a fresh Codex instance; environment variables only flow into new processes.
 - **If the machine does not have a global `.NET`, do not double-click the exe under `bin` directly.** Prefer the portable-package launcher scripts or the repository scripts.
 - **Compatible-provider connectivity probing is based on `/models`.** If probing fails, first check whether the `Base URL` is missing `/v1`.
 - **Browser access to the local API is restricted to trusted loopback origins only.** The current allowlist is `http://127.0.0.1:5057` / `http://localhost:5057` / `http://127.0.0.1:5173` / `http://localhost:5173` / `http://127.0.0.1:4173` / `http://localhost:4173`; this keeps the local API itself and the frontend rebuild dev/preview entry points working while blocking arbitrary web pages from reading or mutating the local API across origins.
@@ -162,11 +182,13 @@ The Windows porting work in this project builds on the product direction and imp
 
 `README.md` only keeps a short summary of changes relative to the previous version. For full details, see [CHANGELOG.md](./CHANGELOG.md).
 
-### v0.2.1 - 2026-04-20
+### v0.3.0 - 2026-04-23
 
-- Fixed the issue where the old `localhost:1455` listener was not released in time after a successful manual OAuth fallback, which could cause later sign-ins to fail because the port stayed occupied
-- The native `OAuthDialog` now proactively releases the loopback listener on manual completion, cancel, and window close, reducing the chance of leftover port bindings
-- Updated the portable-package guidance to a true "download and run" flow: after extraction, you can start directly with `start-codexbar.cmd` or `open-settings.cmd`
+- Upgraded the main flyout switch / launch flow: switching only affects new sessions, and running Codex Desktop instances are restarted only after explicit confirmation
+- Added tray right-click quick account/API selection, with official OpenAI accounts showing compact quota such as `Account (50%/90%)`
+- Reworked Settings into left-side navigation pages and added About, auto-open mini overlay, and restore restart-confirmation actions
+- Added session-history ZIP export/import for `sessions`, `archived_sessions`, and `session_index.jsonl` without touching credentials
+- Refined main flyout details: top actions stay usable while launching, quota titles follow the real plan, and account actions consistently say "Switch"
 
 ## License
 

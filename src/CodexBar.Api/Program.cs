@@ -61,6 +61,25 @@ app.MapPost("/api/settings/import", async (HttpRequest request, FrontendBackendS
     return ToResult(await service.ImportAccountsCsvAsync(content, cancellationToken));
 });
 
+app.MapGet("/api/history/export", async (bool? includeArchived, FrontendBackendService service, CancellationToken cancellationToken) =>
+{
+    var (fileName, content) = await service.ExportHistoryZipAsync(includeArchived != false, cancellationToken);
+    return Results.File(content, "application/zip", fileName);
+});
+
+app.MapPost("/api/history/import", async (HttpRequest request, FrontendBackendService service, CancellationToken cancellationToken) =>
+{
+    var form = await request.ReadFormAsync(cancellationToken);
+    var file = form.Files["file"];
+    if (file is null)
+    {
+        return Results.BadRequest(new FrontendCommandResult(false, "未收到历史会话 ZIP 文件。"));
+    }
+
+    await using var content = file.OpenReadStream();
+    return ToResult(await service.ImportHistoryZipAsync(content, cancellationToken));
+});
+
 app.MapPost("/api/accounts/activate", async (FrontendAccountActionRequest request, FrontendBackendService service, CancellationToken cancellationToken)
     => ToResult(await service.ActivateAccountAsync(request.ProviderId, request.AccountId, forceLaunch: false, cancellationToken)));
 

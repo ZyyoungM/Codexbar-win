@@ -1,5 +1,9 @@
 using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using CodexBar.Auth;
 using CodexBar.CodexCompat;
 using CodexBar.Core;
@@ -9,6 +13,8 @@ namespace CodexBar.Win;
 
 public partial class SettingsWindow : Window
 {
+    private const string ProjectGitHubUrl = "https://github.com/ZyyoungM/Codexbar-win";
+
     private sealed record OptionItem<T>(T Value, string Label)
     {
         public override string ToString() => Label;
@@ -37,6 +43,8 @@ public partial class SettingsWindow : Window
         AccountSortModeBox.ItemsSource = BuildAccountSortModeOptions();
         ActivationBehaviorBox.ItemsSource = BuildActivationBehaviorOptions();
         OpenAiAccountModeBox.ItemsSource = BuildOpenAiModeOptions();
+        SettingsNavList.SelectedIndex = 0;
+        ShowSettingsPage("runtime");
         Loaded += async (_, _) => await LoadConfigAsync();
     }
 
@@ -52,8 +60,11 @@ public partial class SettingsWindow : Window
         CodexDesktopPathBox.Text = _config.Settings.CodexDesktopPath ?? "";
         CodexCliPathBox.Text = _config.Settings.CodexCliPath ?? "";
         StartupBox.IsChecked = _startup.IsEnabled();
+        OpenOverlayOnStartupBox.IsChecked = _config.Settings.OpenOverlayOnStartup;
         OverlayEnabledBox.IsEnabled = _overlayVisibilityChanged is not null;
         SyncOverlayState(_overlayVisibleProvider?.Invoke() == true);
+        UpdateRestartPromptState();
+        UpdateAboutPage(home);
         StatusText.Text = "\u5C31\u7EEA\u3002";
     }
 
@@ -77,6 +88,7 @@ public partial class SettingsWindow : Window
                 AccountSortMode = SelectedValue(AccountSortModeBox, AccountSortMode.Manual),
                 ActivationBehavior = SelectedValue(ActivationBehaviorBox, ActivationBehavior.WriteConfigOnly),
                 OpenAiAccountMode = SelectedValue(OpenAiAccountModeBox, OpenAiAccountMode.ManualSwitch),
+                OpenOverlayOnStartup = OpenOverlayOnStartupBox.IsChecked == true,
                 CodexDesktopPath = EmptyToNull(CodexDesktopPathBox.Text),
                 CodexCliPath = EmptyToNull(CodexCliPathBox.Text)
             }
@@ -94,10 +106,18 @@ public partial class SettingsWindow : Window
     private void Cancel_Click(object sender, RoutedEventArgs e)
         => Close();
 
+    private void SettingsNavList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        ShowSettingsPage((SettingsNavList.SelectedItem as ListBoxItem)?.Tag as string);
+    }
+
     public void SyncOverlayState(bool isVisible)
     {
         _suppressOverlayToggle = true;
         OverlayEnabledBox.IsChecked = isVisible;
+        OverlayEnabledBox.ToolTip = isVisible
+            ? "\u5F53\u524D\u5C0F\u6D6E\u7A97\u5DF2\u6253\u5F00\u3002"
+            : "\u5F53\u524D\u5C0F\u6D6E\u7A97\u5DF2\u5173\u95ED\u3002";
         _suppressOverlayToggle = false;
     }
 
@@ -125,11 +145,11 @@ public partial class SettingsWindow : Window
         if (detected is not null)
         {
             CodexDesktopPathBox.Text = detected;
-            DetectionText.Text = $"\u5DF2\u63A2\u6D4B\u5230 Codex Desktop\uFF1A{detected}";
+            StatusText.Text = $"\u5DF2\u63A2\u6D4B\u5230 Codex Desktop\uFF1A{detected}";
             return;
         }
 
-        DetectionText.Text = "\u672A\u627E\u5230 Codex Desktop\u3002";
+        StatusText.Text = "\u672A\u627E\u5230 Codex Desktop\u3002";
     }
 
     private async void DetectCli_Click(object sender, RoutedEventArgs e)
@@ -138,11 +158,11 @@ public partial class SettingsWindow : Window
         if (detected is not null)
         {
             CodexCliPathBox.Text = detected.Path;
-            DetectionText.Text = $"\u5DF2\u63A2\u6D4B\u5230 Codex CLI\uFF1A{detected.Path}\n\u7248\u672C\uFF1A{detected.Version ?? "\uFF08\u672A\u77E5\uFF09"}";
+            StatusText.Text = $"\u5DF2\u63A2\u6D4B\u5230 Codex CLI\uFF1A{detected.Path}\n\u7248\u672C\uFF1A{detected.Version ?? "\uFF08\u672A\u77E5\uFF09"}";
             return;
         }
 
-        DetectionText.Text = "\u672A\u627E\u5230 Codex CLI\u3002";
+        StatusText.Text = "\u672A\u627E\u5230 Codex CLI\u3002";
     }
 
     private async void LaunchCodex_Click(object sender, RoutedEventArgs e)
@@ -270,6 +290,119 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private async void ExportHistory_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "\u5BFC\u51FA\u5386\u53F2\u4F1A\u8BDD ZIP",
+                Filter = "ZIP files (*.zip)|*.zip|All files (*.*)|*.*",
+                FileName = $"codexbar-history-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.zip"
+            };
+            if (dialog.ShowDialog(this) != true)
+            {
+                return;
+            }
+
+            var result = await new SessionArchiveService(_appPaths)
+                .ExportAsync(
+                    new CodexHomeLocator().Resolve(),
+                    dialog.FileName,
+                    new SessionArchiveExportOptions(IncludeArchivedHistoryBox.IsChecked != false));
+            StatusText.Text = $"\u5DF2\u5BFC\u51FA\u5386\u53F2\u4F1A\u8BDD\uFF1A{dialog.FileName}\n" +
+                              $"sessions\uFF1A{result.SessionsExported}\uFF1Barchived_sessions\uFF1A{result.ArchivedSessionsExported}\uFF1Bsession_index\uFF1A{(result.SessionIndexExported ? "\u5DF2\u5305\u542B" : "\u672A\u5305\u542B")}\uFF1B\u8DF3\u8FC7\uFF1A{result.FilesSkipped}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = DiagnosticLogger.Redact(ex.Message);
+        }
+    }
+
+    private async void ImportHistory_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "\u5BFC\u5165\u5386\u53F2\u4F1A\u8BDD ZIP",
+                Filter = "ZIP files (*.zip)|*.zip|All files (*.*)|*.*"
+            };
+            if (dialog.ShowDialog(this) != true)
+            {
+                return;
+            }
+
+            var confirmation = System.Windows.MessageBox.Show(
+                this,
+                "\u5BFC\u5165\u4F1A\u5408\u5E76 sessions\u3001archived_sessions \u548C session_index.jsonl\uFF0C\u4E0D\u4F1A\u89E6\u78B0 config.toml\u3001auth.json \u6216\u5BC6\u94A5\u3002\u5EFA\u8BAE\u5148\u5173\u95ED\u6B63\u5728\u8FD0\u884C\u7684 Codex \u540E\u518D\u7EE7\u7EED\u3002",
+                "\u5BFC\u5165\u5386\u53F2\u4F1A\u8BDD",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning);
+            if (confirmation != System.Windows.MessageBoxResult.OK)
+            {
+                return;
+            }
+
+            var result = await new SessionArchiveService(_appPaths)
+                .ImportAsync(new CodexHomeLocator().Resolve(), dialog.FileName);
+            var backup = string.IsNullOrWhiteSpace(result.SessionIndexBackupPath)
+                ? ""
+                : $"\nsession_index \u5907\u4EFD\uFF1A{result.SessionIndexBackupPath}";
+            StatusText.Text = $"\u5DF2\u5BFC\u5165\u5386\u53F2\u4F1A\u8BDD\u3002\n{SessionArchiveService.FormatImportSummary(result)}{backup}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = DiagnosticLogger.Redact(ex.Message);
+        }
+    }
+
+    private void OpenLogsDirectory_Click(object sender, RoutedEventArgs e)
+        => OpenDirectory(_appPaths.LogsDirectory);
+
+    private void OpenAppStateDirectory_Click(object sender, RoutedEventArgs e)
+        => OpenDirectory(_appPaths.AppRoot);
+
+    private void OpenProjectGitHub_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(ProjectGitHubUrl)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"\u6253\u5F00 GitHub \u5931\u8D25\uFF1A{DiagnosticLogger.Redact(ex.Message)}";
+        }
+    }
+
+    private void CopyDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        var home = new CodexHomeLocator().Resolve();
+        var diagnosticInfo = string.Join(Environment.NewLine, new[]
+        {
+            "CodexBar for Windows",
+            $"Version: {AppVersion()}",
+            $"GitHub: {ProjectGitHubUrl}",
+            $".NET: {Environment.Version}",
+            $"OS: {Environment.OSVersion.VersionString}",
+            $"Process: {Environment.ProcessPath ?? "unknown"}",
+            $"App state: {_appPaths.AppRoot}",
+            $"Config: {_appPaths.ConfigPath}",
+            $"Logs: {_appPaths.LogsDirectory}",
+            $"CODEX_HOME: {home.RootPath}",
+            $"Codex config: {home.ConfigPath}",
+            $"Codex auth: {home.AuthPath}",
+            $"Sessions: {home.SessionsPath}",
+            $"Archived sessions: {home.ArchivedSessionsPath}",
+            $"CODEX_HOME override: {(home.IsExplicitlyOverridden ? "yes" : "no")}"
+        });
+        System.Windows.Clipboard.SetText(diagnosticInfo);
+        StatusText.Text = "\u8BCA\u65AD\u4FE1\u606F\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\u3002";
+    }
+
     private static string? PickExecutable(string title)
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
@@ -283,6 +416,17 @@ public partial class SettingsWindow : Window
 
     private static string? EmptyToNull(string value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private void UpdateAboutPage(CodexHomeState home)
+    {
+        AboutSummaryText.Text = "\u4E00\u4E2A Windows \u539F\u751F Codex \u8D26\u53F7\u5207\u6362\u3001\u542F\u52A8\u548C\u5C0F\u6D6E\u7A97\u8F85\u52A9\u5DE5\u5177\u3002";
+        AboutVersionText.Text = $"版本：{AppVersion()} · 架构：{RuntimeInformation.ProcessArchitecture}";
+        AboutEnvironmentText.Text = $".NET：{Environment.Version} · Windows：{Environment.OSVersion.VersionString}";
+        AboutProjectUrlText.Text = ProjectGitHubUrl;
+        AboutCompatibilityText.Text = "CodexBar 只切换当前 Provider / 账号状态，并只写入 config.toml 与 auth.json；不会拆分 shared ~/.codex 历史池，不会重写 sessions 或 archived_sessions，切换只影响新会话。";
+        AboutPathsText.Text = $"应用状态目录：{_appPaths.AppRoot}\n配置文件：{_appPaths.ConfigPath}\n日志目录：{_appPaths.LogsDirectory}\nCODEX_HOME：{home.RootPath}\nCodex 配置：{home.ConfigPath}\nCodex 授权：{home.AuthPath}";
+        AboutFooterText.Text = "MIT License · Copyright (c) 2026 CodexBar for Windows contributors";
+    }
 
     private async void OverlayEnabledBox_Checked(object sender, RoutedEventArgs e)
         => await ApplyOverlayVisibilityAsync(true);
@@ -301,12 +445,44 @@ public partial class SettingsWindow : Window
         {
             await _overlayVisibilityChanged(isVisible);
             StatusText.Text = isVisible ? "\u5C0F\u6D6E\u7A97\u5DF2\u6253\u5F00\u3002" : "\u5C0F\u6D6E\u7A97\u5DF2\u5173\u95ED\u3002";
+            SyncOverlayState(_overlayVisibleProvider?.Invoke() == true);
         }
         catch (Exception ex)
         {
             StatusText.Text = DiagnosticLogger.Redact(ex.Message);
             SyncOverlayState(_overlayVisibleProvider?.Invoke() == true);
         }
+    }
+
+    private async void ResetRestartPrompt_Click(object sender, RoutedEventArgs e)
+    {
+        _config = await _configStore.LoadAsync();
+        if (!_config.Settings.SuppressRestartConfirmation)
+        {
+            UpdateRestartPromptState();
+            StatusText.Text = "重启确认弹窗当前已启用。";
+            return;
+        }
+
+        _config = _config with
+        {
+            Settings = _config.Settings with
+            {
+                SuppressRestartConfirmation = false
+            }
+        };
+        await _configStore.SaveAsync(_config);
+        UpdateRestartPromptState();
+        StatusText.Text = "已恢复重启确认弹窗。";
+    }
+
+    private void UpdateRestartPromptState()
+    {
+        var suppressed = _config.Settings.SuppressRestartConfirmation;
+        RestartPromptStateText.Text = suppressed
+            ? "当前已关闭重启确认弹窗；在主浮窗点击“启动”会直接重启 Codex。"
+            : "当前会在重启 Codex 前弹出确认窗。";
+        ResetRestartPromptButton.IsEnabled = suppressed;
     }
 
     private static IReadOnlyList<OptionItem<AccountSortMode>> BuildAccountSortModeOptions()
@@ -320,14 +496,14 @@ public partial class SettingsWindow : Window
         =>
         [
             new(ActivationBehavior.WriteConfigOnly, "\u53EA\u6539\u914D\u7F6E\uFF08\u4E0D\u542F\u52A8 Codex\uFF09"),
-            new(ActivationBehavior.LaunchNewCodex, "\u6FC0\u6D3B\u540E\u542F\u52A8\u65B0\u7684 Codex")
+            new(ActivationBehavior.LaunchNewCodex, "\u5207\u6362\u540E\u542F\u52A8\u65B0\u7684 Codex")
         ];
 
     private static IReadOnlyList<OptionItem<OpenAiAccountMode>> BuildOpenAiModeOptions()
         =>
         [
             new(OpenAiAccountMode.ManualSwitch, "\u624B\u52A8\u5207\u6362"),
-            new(OpenAiAccountMode.AggregateGateway, "\u805A\u5408\u7F51\u5173")
+            new(OpenAiAccountMode.AggregateGateway, "\u81EA\u52A8\u6A21\u5F0F")
         ];
 
     private static void SelectOption<T>(System.Windows.Controls.ComboBox comboBox, T value)
@@ -339,4 +515,44 @@ public partial class SettingsWindow : Window
 
     private static T SelectedValue<T>(System.Windows.Controls.ComboBox comboBox, T fallback)
         => comboBox.SelectedItem is OptionItem<T> option ? option.Value : fallback;
+
+    private void ShowSettingsPage(string? pageKey)
+    {
+        RuntimePathsPage.Visibility = string.Equals(pageKey, "runtime", StringComparison.OrdinalIgnoreCase)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        AccountBehaviorPage.Visibility = string.Equals(pageKey, "behavior", StringComparison.OrdinalIgnoreCase)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ImportExportPage.Visibility = string.Equals(pageKey, "import-export", StringComparison.OrdinalIgnoreCase)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        AboutPage.Visibility = string.Equals(pageKey, "about", StringComparison.OrdinalIgnoreCase)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private static string AppVersion()
+        => Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion
+            ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString()
+            ?? "unknown";
+
+    private void OpenDirectory(string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = DiagnosticLogger.Redact(ex.Message);
+        }
+    }
 }

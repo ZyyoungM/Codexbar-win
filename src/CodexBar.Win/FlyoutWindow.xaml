@@ -226,7 +226,7 @@
         <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
 
-      <Grid Grid.Row="0" Margin="0,0,0,12" IsEnabled="{Binding CanInteract}">
+      <Grid Grid.Row="0" Margin="0,0,0,12">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto" />
           <RowDefinition Height="Auto" />
@@ -373,7 +373,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-              <TextBlock Text="5h 额度"
+              <TextBlock Text="{Binding ActiveAccount.FiveHourQuotaLabel}"
                          Foreground="#605E5C"
                          FontSize="9" />
               <TextBlock Grid.Column="1"
@@ -399,7 +399,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-              <TextBlock Text="周额度"
+              <TextBlock Text="{Binding ActiveAccount.WeeklyQuotaLabel}"
                          Foreground="#605E5C"
                          FontSize="9" />
               <TextBlock Grid.Column="1"
@@ -617,7 +617,7 @@
                 <StackPanel Grid.Column="2"
                             Orientation="Horizontal"
                             VerticalAlignment="Top">
-                  <Button Content="使用"
+                  <Button Content="切换"
                           Style="{StaticResource MiniSecondaryButton}"
                           Visibility="{Binding CanActivate, Converter={StaticResource BoolToVisibility}}"
                           Click="UseAccount_Click" />
@@ -655,7 +655,7 @@
                       <ColumnDefinition Width="*" />
                       <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="5h 额度"
+                    <TextBlock Text="{Binding FiveHourQuotaLabel}"
                                Foreground="#605E5C"
                                FontSize="9" />
                     <TextBlock Grid.Column="1"
@@ -681,7 +681,7 @@
                       <ColumnDefinition Width="*" />
                       <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="周额度"
+                    <TextBlock Text="{Binding WeeklyQuotaLabel}"
                                Foreground="#605E5C"
                                FontSize="9" />
                     <TextBlock Grid.Column="1"

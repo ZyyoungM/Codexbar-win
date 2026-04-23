@@ -19,6 +19,8 @@ export interface FlyoutAccount {
   status: 'online' | 'offline' | 'checking';
   usage5h?: number;
   usageWeekly?: number;
+  usage5hRefreshText?: string;
+  usageWeeklyRefreshText?: string;
   usageDaily?: number;
   usageWeeklyTokens?: number;
   usageMonthly?: number;
@@ -144,7 +146,7 @@ function DraggableAccount({
         <div className="mb-2 space-y-1.5">
           <div>
             <div className="flex items-center justify-between text-[9px] mb-1">
-              <span className={isDark ? 'text-white/50' : 'text-[#605e5c]'}>5h 额度</span>
+              <span className={isDark ? 'text-white/50' : 'text-[#605e5c]'}>{account.usage5hRefreshText || '5h 额度'}</span>
               <span className={isDark ? 'text-white/80' : 'text-[#1c1c1c]'}>{account.usage5h || 0}%</span>
             </div>
             <div className={`h-1 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-[#e9e9e9]'}`}>
@@ -156,7 +158,7 @@ function DraggableAccount({
           </div>
           <div>
             <div className="flex items-center justify-between text-[9px] mb-1">
-              <span className={isDark ? 'text-white/50' : 'text-[#605e5c]'}>周额度</span>
+              <span className={isDark ? 'text-white/50' : 'text-[#605e5c]'}>{account.usageWeeklyRefreshText || '周额度'}</span>
               <span className={isDark ? 'text-white/80' : 'text-[#1c1c1c]'}>{account.usageWeekly || 0}%</span>
             </div>
             <div className={`h-1 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-[#e9e9e9]'}`}>
@@ -209,6 +211,8 @@ function toAccount(account: DashboardAccountDto): FlyoutAccount {
     status: account.status,
     usage5h: account.usage5h ?? undefined,
     usageWeekly: account.usageWeekly ?? undefined,
+    usage5hRefreshText: account.usage5hRefreshText ?? undefined,
+    usageWeeklyRefreshText: account.usageWeeklyRefreshText ?? undefined,
     usageDaily: account.usageDaily ?? undefined,
     usageWeeklyTokens: account.usageWeeklyTokens ?? undefined,
     usageMonthly: account.usageMonthly ?? undefined

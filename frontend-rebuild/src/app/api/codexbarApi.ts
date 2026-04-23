@@ -17,6 +17,8 @@ export interface DashboardAccountDto {
   status: ConnectionStatus;
   usage5h: number | null;
   usageWeekly: number | null;
+  usage5hRefreshText: string | null;
+  usageWeeklyRefreshText: string | null;
   usageDaily: number | null;
   usageWeeklyTokens: number | null;
   usageMonthly: number | null;
@@ -193,6 +195,38 @@ export const codexbarApi = {
       const message = typeof data === 'object' && data && 'message' in data
         ? String((data as { message?: string }).message ?? `Import failed (${response.status})`)
         : `Import failed (${response.status})`;
+      throw new Error(message);
+    }
+    return data as CommandResult;
+  },
+
+  async exportHistoryZip(includeArchived = true) {
+    const response = await fetch(`${baseUrl}/api/history/export?includeArchived=${includeArchived ? 'true' : 'false'}`);
+    if (!response.ok) {
+      throw new Error(`History export failed (${response.status})`);
+    }
+
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const match = disposition.match(/filename="?([^"]+)"?/i);
+    const fileName = match?.[1] ?? 'codexbar-history.zip';
+    const blob = await response.blob();
+    return { fileName, blob };
+  },
+
+  async importHistoryZip(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${baseUrl}/api/history/import`, {
+      method: 'POST',
+      body: formData
+    });
+    const text = await response.text();
+    const data = text ? tryParseJson(text) : null;
+    if (!response.ok) {
+      const message = typeof data === 'object' && data && 'message' in data
+        ? String((data as { message?: string }).message ?? `History import failed (${response.status})`)
+        : `History import failed (${response.status})`;
       throw new Error(message);
     }
     return data as CommandResult;

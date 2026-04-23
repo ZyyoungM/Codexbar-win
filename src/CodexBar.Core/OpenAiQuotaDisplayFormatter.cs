@@ -2,6 +2,17 @@ namespace CodexBar.Core;
 
 public static class OpenAiQuotaDisplayFormatter
 {
+    public static string FormatQuotaLabel(
+        QuotaUsageSnapshot snapshot,
+        string displayLabel,
+        DateTimeOffset? now = null)
+    {
+        var refreshAt = FormatQuotaRefreshAt(snapshot, displayLabel, now);
+        return string.IsNullOrWhiteSpace(refreshAt)
+            ? displayLabel
+            : $"{displayLabel} 刷新于 {refreshAt}";
+    }
+
     public static string? FormatCompactRemaining(
         QuotaUsageSnapshot snapshot,
         string displayLabel,
@@ -54,6 +65,38 @@ public static class OpenAiQuotaDisplayFormatter
         return snapshot.Limit.HasValue ? $"{snapshot.Limit.Value}" : "\u672A\u77E5";
     }
 
+    public static string? FormatQuotaRefreshAt(
+        QuotaUsageSnapshot snapshot,
+        string displayLabel,
+        DateTimeOffset? now = null)
+    {
+        if (!snapshot.ResetAt.HasValue)
+        {
+            return null;
+        }
+
+        var localReset = snapshot.ResetAt.Value.ToLocalTime();
+        var localNow = (now ?? DateTimeOffset.Now).ToLocalTime();
+        var normalizedLabel = NormalizeLabel(displayLabel);
+
+        if (normalizedLabel.StartsWith("5h", StringComparison.Ordinal))
+        {
+            return localReset.ToString("HH:mm");
+        }
+
+        if (normalizedLabel.Contains("week", StringComparison.Ordinal)
+            || normalizedLabel.Contains("weekly", StringComparison.Ordinal)
+            || normalizedLabel.Contains("周", StringComparison.Ordinal))
+        {
+            var delta = localReset - localNow;
+            return delta >= TimeSpan.Zero && delta < TimeSpan.FromHours(24)
+                ? localReset.ToString("HH:mm")
+                : localReset.ToString("MM-dd");
+        }
+
+        return localReset.ToString("yyyy-MM-dd HH:mm");
+    }
+
     public static string? FormatNextReset(
         QuotaUsageSnapshot snapshot,
         string displayLabel,
@@ -83,4 +126,7 @@ public static class OpenAiQuotaDisplayFormatter
 
         return localReset.ToString("yyyy-MM-dd HH:mm");
     }
+
+    private static string NormalizeLabel(string value)
+        => string.Concat(value.Where(character => !char.IsWhiteSpace(character))).ToLowerInvariant();
 }

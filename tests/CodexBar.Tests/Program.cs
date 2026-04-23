@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
+using System.IO.Compression;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -53,11 +54,22 @@ var tests = new (string Name, Func<Task> Run)[]
     ("launch service skips process start when write only", LaunchServiceWriteOnlyTest),
     ("launch service starts desktop with clean environment", LaunchServiceDesktopTest),
     ("compatible launch injects active API key", CompatibleLaunchInjectsActiveApiKeyTest),
+    ("desktop process service detects desktop without matching cli", CodexDesktopProcessServiceDetectsDesktopTest),
+    ("desktop process service requests normal close only", CodexDesktopProcessServiceNormalCloseTest),
+    ("desktop process service refuses unclosable desktop without kill", CodexDesktopProcessServiceNoSilentKillTest),
+    ("desktop process service terminates only after confirmation path", CodexDesktopProcessServiceTerminateAfterConfirmationTest),
+    ("desktop process service falls back when terminate no-ops", CodexDesktopProcessServiceForceTerminateFallbackTest),
+    ("desktop process service force terminates tracked pids only", CodexDesktopProcessServiceForceTerminateTrackedPidsOnlyTest),
     ("app config persists manual account order", AppConfigManualOrderTest),
+    ("app config persists overlay startup preference", AppConfigOverlayStartupPreferenceTest),
+    ("app config persists restart confirmation suppression", AppConfigRestartConfirmationSuppressionTest),
     ("quota formatter shows remaining quota and 5h reset time as hh:mm", QuotaFormatterFiveHourResetTest),
     ("quota formatter shows weekly reset as date unless within 24h", QuotaFormatterWeeklyResetTest),
     ("official OpenAI usage refresh maps plan and quota windows", OfficialOpenAiUsageRefreshTest),
     ("official OpenAI usage refresh marks unauthorized accounts for reauth", OfficialOpenAiUsageUnauthorizedTest),
+    ("session archive exports and imports shared history only", SessionArchiveExportImportTest),
+    ("session archive imports conflicts without overwriting", SessionArchiveConflictImportTest),
+    ("session archive rejects unsafe zip paths", SessionArchiveUnsafePathTest),
     ("account csv imports compatible secrets", AccountCsvCompatibleSecretTest),
     ("account csv exports oauth metadata without secrets by default", AccountCsvOAuthSecretSafetyTest)
 };
@@ -1095,6 +1107,210 @@ static async Task CompatibleLaunchInjectsActiveApiKeyTest()
     AssertEqual("https://example.test/v1", startInfo.EnvironmentVariables["OPENAI_BASE_URL"]);
 }
 
+static Task CodexDesktopProcessServiceDetectsDesktopTest()
+{
+    using var temp = TempDir.Create();
+    var desktopPath = Path.Combine(temp.Path, "app", "Codex.exe");
+    var cliPath = Path.Combine(temp.Path, "app", "resources", "codex.exe");
+    Directory.CreateDirectory(Path.GetDirectoryName(desktopPath)!);
+    Directory.CreateDirectory(Path.GetDirectoryName(cliPath)!);
+    File.WriteAllText(desktopPath, "desktop");
+    File.WriteAllText(cliPath, "cli");
+    var provider = new FakeCodexDesktopProcessProvider([
+        new FakeCodexDesktopProcess(1, "codex", cliPath, hasMainWindow: true, parentProcessId: 999),
+        new FakeCodexDesktopProcess(2, "Codex", desktopPath, hasMainWindow: true)
+    ]);
+    var service = new CodexDesktopProcessService(
+        new CodexDesktopLocator(
+            windowsAppsRoots: [],
+            localAppData: temp.Path,
+            programFiles: Path.Combine(temp.Path, "ProgramFiles"),
+            programFilesX86: Path.Combine(temp.Path, "ProgramFilesX86"),
+            pathEnvironment: string.Empty),
+        provider);
+
+    var status = service.GetStatus(desktopPath);
+
+    AssertTrue(status.IsRunning);
+    AssertEqual(1, status.Processes.Count);
+    AssertEqual(2, status.Processes.Single().ProcessId);
+    return Task.CompletedTask;
+}
+
+static async Task CodexDesktopProcessServiceNormalCloseTest()
+{
+    using var temp = TempDir.Create();
+    var desktopPath = Path.Combine(temp.Path, "Codex.exe");
+    File.WriteAllText(desktopPath, "desktop");
+    var process = new FakeCodexDesktopProcess(7, "Codex", desktopPath, hasMainWindow: true);
+    var service = new CodexDesktopProcessService(
+        new CodexDesktopLocator(
+            windowsAppsRoots: [],
+            localAppData: temp.Path,
+            programFiles: Path.Combine(temp.Path, "ProgramFiles"),
+            programFilesX86: Path.Combine(temp.Path, "ProgramFilesX86"),
+            pathEnvironment: string.Empty),
+        new FakeCodexDesktopProcessProvider([process]));
+    var status = service.GetStatus(desktopPath);
+
+    var result = await service.RequestCloseAsync(status, desktopPath, TimeSpan.FromMilliseconds(50));
+
+    AssertTrue(result.CloseRequested);
+    AssertTrue(result.AllExited, result.Message);
+    AssertEqual(1, process.CloseRequests);
+    AssertTrue(process.HasExited);
+}
+
+static async Task CodexDesktopProcessServiceNoSilentKillTest()
+{
+    using var temp = TempDir.Create();
+    var desktopPath = Path.Combine(temp.Path, "Codex.exe");
+    File.WriteAllText(desktopPath, "desktop");
+    var process = new FakeCodexDesktopProcess(8, "Codex", desktopPath, hasMainWindow: false);
+    var service = new CodexDesktopProcessService(
+        new CodexDesktopLocator(
+            windowsAppsRoots: [],
+            localAppData: temp.Path,
+            programFiles: Path.Combine(temp.Path, "ProgramFiles"),
+            programFilesX86: Path.Combine(temp.Path, "ProgramFilesX86"),
+            pathEnvironment: string.Empty),
+        new FakeCodexDesktopProcessProvider([process]));
+    var status = service.GetStatus(desktopPath);
+
+    var result = await service.RequestCloseAsync(status, desktopPath, TimeSpan.FromMilliseconds(50));
+
+    AssertTrue(!result.CloseRequested);
+    AssertTrue(!result.AllExited);
+    AssertEqual(0, process.CloseRequests);
+    AssertTrue(!process.HasExited);
+    AssertContains(result.Message, "避免静默强杀");
+}
+
+static async Task CodexDesktopProcessServiceTerminateAfterConfirmationTest()
+{
+    using var temp = TempDir.Create();
+    var desktopPath = Path.Combine(temp.Path, "app", "Codex.exe");
+    var appServerPath = Path.Combine(temp.Path, "app", "resources", "codex.exe");
+    Directory.CreateDirectory(Path.GetDirectoryName(desktopPath)!);
+    Directory.CreateDirectory(Path.GetDirectoryName(appServerPath)!);
+    File.WriteAllText(desktopPath, "desktop");
+    File.WriteAllText(appServerPath, "server");
+    var process = new FakeCodexDesktopProcess(9, "Codex", desktopPath, hasMainWindow: true, exitsOnClose: true);
+    var appServer = new FakeCodexDesktopProcess(10, "codex", appServerPath, hasMainWindow: false, parentProcessId: 9);
+    var service = new CodexDesktopProcessService(
+        new CodexDesktopLocator(
+            windowsAppsRoots: [],
+            localAppData: temp.Path,
+            programFiles: Path.Combine(temp.Path, "ProgramFiles"),
+            programFilesX86: Path.Combine(temp.Path, "ProgramFilesX86"),
+            pathEnvironment: string.Empty),
+        new FakeCodexDesktopProcessProvider([process, appServer]));
+    var status = service.GetStatus(desktopPath);
+
+    AssertEqual(2, status.Processes.Count);
+    var closeResult = await service.RequestCloseAsync(status, desktopPath, TimeSpan.FromMilliseconds(20));
+
+    AssertTrue(closeResult.CloseRequested);
+    AssertTrue(!closeResult.AllExited);
+    AssertEqual(1, process.CloseRequests);
+    AssertEqual(0, appServer.CloseRequests);
+    AssertEqual(0, process.TerminateRequests);
+    AssertEqual(0, appServer.TerminateRequests);
+    AssertTrue(process.HasExited);
+    AssertTrue(!appServer.HasExited);
+
+    var terminateResult = await service.TerminateAfterUserConfirmationAsync(status, desktopPath, TimeSpan.FromMilliseconds(20));
+
+    AssertTrue(terminateResult.TerminateRequested);
+    AssertTrue(terminateResult.AllExited, terminateResult.Message);
+    AssertEqual(0, process.TerminateRequests);
+    AssertEqual(1, appServer.TerminateRequests);
+    AssertTrue(appServer.HasExited);
+}
+
+static async Task CodexDesktopProcessServiceForceTerminateFallbackTest()
+{
+    using var temp = TempDir.Create();
+    var desktopPath = Path.Combine(temp.Path, "app", "Codex.exe");
+    var appServerPath = Path.Combine(temp.Path, "app", "resources", "codex.exe");
+    Directory.CreateDirectory(Path.GetDirectoryName(desktopPath)!);
+    Directory.CreateDirectory(Path.GetDirectoryName(appServerPath)!);
+    File.WriteAllText(desktopPath, "desktop");
+    File.WriteAllText(appServerPath, "server");
+    var process = new FakeCodexDesktopProcess(11, "Codex", desktopPath, hasMainWindow: false, exitsOnTerminate: false);
+    var appServer = new FakeCodexDesktopProcess(12, "codex", appServerPath, hasMainWindow: false, parentProcessId: 11, exitsOnTerminate: false);
+    var provider = new FakeCodexDesktopProcessProvider([process, appServer]);
+    var fallback = new FakeCodexDesktopForceTerminator([process, appServer]);
+    var service = new CodexDesktopProcessService(
+        new CodexDesktopLocator(
+            windowsAppsRoots: [],
+            localAppData: temp.Path,
+            programFiles: Path.Combine(temp.Path, "ProgramFiles"),
+            programFilesX86: Path.Combine(temp.Path, "ProgramFilesX86"),
+            pathEnvironment: string.Empty),
+        provider,
+        fallback);
+    var status = service.GetStatus(desktopPath);
+
+    var terminateResult = await service.TerminateAfterUserConfirmationAsync(status, desktopPath, TimeSpan.FromMilliseconds(20));
+
+    AssertTrue(terminateResult.TerminateRequested);
+    AssertTrue(terminateResult.AllExited, terminateResult.Message);
+    var debugInfo = $"roots={string.Join(",", terminateResult.AttemptedRootProcessIds)} force={string.Join(",", fallback.AttemptedProcessIds)} rootTerminate={process.TerminateRequests} childTerminate={appServer.TerminateRequests}";
+    AssertEqual(1, terminateResult.AttemptedRootProcessIds.Count);
+    AssertEqual(11, terminateResult.AttemptedRootProcessIds.Single());
+    AssertEqual(2, fallback.AttemptedProcessIds.Count);
+    AssertEqual(12, fallback.AttemptedProcessIds[0]);
+    AssertEqual(11, fallback.AttemptedProcessIds[1]);
+    AssertTrue(process.TerminateRequests == 1, debugInfo);
+    AssertTrue(appServer.TerminateRequests == 1, debugInfo);
+    AssertTrue(process.HasExited);
+    AssertTrue(appServer.HasExited);
+}
+
+static async Task CodexDesktopProcessServiceForceTerminateTrackedPidsOnlyTest()
+{
+    using var temp = TempDir.Create();
+    var desktopPath = Path.Combine(temp.Path, "app", "Codex.exe");
+    var workerPath = Path.Combine(temp.Path, "app", "Codex.Helper.exe");
+    var appServerPath = Path.Combine(temp.Path, "app", "resources", "codex.exe");
+    Directory.CreateDirectory(Path.GetDirectoryName(desktopPath)!);
+    Directory.CreateDirectory(Path.GetDirectoryName(appServerPath)!);
+    File.WriteAllText(desktopPath, "desktop");
+    File.WriteAllText(workerPath, "worker");
+    File.WriteAllText(appServerPath, "server");
+    var parentLauncher = new FakeCodexDesktopProcess(99, "CodexBar.Win", Path.Combine(temp.Path, "CodexBar.Win.exe"), hasMainWindow: false);
+    var root = new FakeCodexDesktopProcess(21, "Codex", desktopPath, hasMainWindow: false, parentProcessId: 99, exitsOnTerminate: false);
+    var worker = new FakeCodexDesktopProcess(22, "Codex", workerPath, hasMainWindow: false, parentProcessId: 21, exitsOnTerminate: false);
+    var appServer = new FakeCodexDesktopProcess(23, "codex", appServerPath, hasMainWindow: false, parentProcessId: 21, exitsOnTerminate: false);
+    var provider = new FakeCodexDesktopProcessProvider([parentLauncher, root, worker, appServer]);
+    var fallback = new FakeCodexDesktopForceTerminator([root, worker, appServer]);
+    var service = new CodexDesktopProcessService(
+        new CodexDesktopLocator(
+            windowsAppsRoots: [],
+            localAppData: temp.Path,
+            programFiles: Path.Combine(temp.Path, "ProgramFiles"),
+            programFilesX86: Path.Combine(temp.Path, "ProgramFilesX86"),
+            pathEnvironment: string.Empty),
+        provider,
+        fallback);
+    var status = service.GetStatus(desktopPath);
+
+    var terminateResult = await service.TerminateAfterUserConfirmationAsync(status, desktopPath, TimeSpan.FromMilliseconds(20));
+
+    AssertTrue(terminateResult.AllExited, terminateResult.Message);
+    AssertEqual(1, terminateResult.AttemptedRootProcessIds.Count);
+    AssertEqual(21, terminateResult.AttemptedRootProcessIds.Single());
+    AssertEqual(3, fallback.AttemptedProcessIds.Count);
+    AssertEqual(22, fallback.AttemptedProcessIds[0]);
+    AssertEqual(23, fallback.AttemptedProcessIds[1]);
+    AssertEqual(21, fallback.AttemptedProcessIds[2]);
+    AssertTrue(!parentLauncher.HasExited);
+    AssertTrue(root.HasExited);
+    AssertTrue(worker.HasExited);
+    AssertTrue(appServer.HasExited);
+}
+
 static async Task AppConfigManualOrderTest()
 {
     using var temp = TempDir.Create();
@@ -1128,6 +1344,38 @@ static async Task AppConfigManualOrderTest()
     AssertEqual(7, loaded.Accounts.Single().ManualOrder);
 }
 
+static async Task AppConfigRestartConfirmationSuppressionTest()
+{
+    using var temp = TempDir.Create();
+    var store = new AppConfigStore(Path.Combine(temp.Path, "config.json"));
+    await store.SaveAsync(new AppConfig
+    {
+        Settings = new AppSettings
+        {
+            SuppressRestartConfirmation = true
+        }
+    });
+
+    var loaded = await store.LoadAsync();
+    AssertTrue(loaded.Settings.SuppressRestartConfirmation);
+}
+
+static async Task AppConfigOverlayStartupPreferenceTest()
+{
+    using var temp = TempDir.Create();
+    var store = new AppConfigStore(Path.Combine(temp.Path, "config.json"));
+    await store.SaveAsync(new AppConfig
+    {
+        Settings = new AppSettings
+        {
+            OpenOverlayOnStartup = true
+        }
+    });
+
+    var loaded = await store.LoadAsync();
+    AssertTrue(loaded.Settings.OpenOverlayOnStartup);
+}
+
 static Task QuotaFormatterFiveHourResetTest()
 {
     var now = new DateTimeOffset(2026, 4, 16, 9, 0, 0, TimeSpan.FromHours(8));
@@ -1140,9 +1388,11 @@ static Task QuotaFormatterFiveHourResetTest()
 
     var compact = OpenAiQuotaDisplayFormatter.FormatCompactRemaining(snapshot, "5h", now);
     var detailed = OpenAiQuotaDisplayFormatter.FormatDetailedRemaining(snapshot, "5h", now);
+    var label = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(snapshot, "5h 额度", now);
 
     AssertEqual("5h 剩余 75% · 下次 13:45", compact);
     AssertEqual("5h 剩余额度：75% | 下次刷新：13:45", detailed);
+    AssertEqual("5h 额度 刷新于 13:45", label);
     return Task.CompletedTask;
 }
 
@@ -1164,9 +1414,13 @@ static Task QuotaFormatterWeeklyResetTest()
 
     var far = OpenAiQuotaDisplayFormatter.FormatCompactRemaining(farSnapshot, "week", now);
     var near = OpenAiQuotaDisplayFormatter.FormatCompactRemaining(nearSnapshot, "week", now);
+    var farLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(farSnapshot, "周额度", now);
+    var nearLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(nearSnapshot, "周额度", now);
 
     AssertEqual("week 剩余 40% · 下次 2026-04-20", far);
     AssertEqual("week 剩余 40% · 下次 20:30", near);
+    AssertEqual("周额度 刷新于 04-20", farLabel);
+    AssertEqual("周额度 刷新于 20:30", nearLabel);
     return Task.CompletedTask;
 }
 
@@ -1266,6 +1520,140 @@ static async Task OfficialOpenAiUsageUnauthorizedTest()
     AssertEqual(AccountStatus.NeedsReauth, account.Status);
     AssertContains(account.OfficialUsageError ?? "", "unauthorized");
     AssertTrue(account.OfficialUsageFetchedAt.HasValue);
+}
+
+static async Task SessionArchiveExportImportTest()
+{
+    using var temp = TempDir.Create();
+    var appPaths = AppPaths.Resolve(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["USERPROFILE"] = Path.Combine(temp.Path, "profile")
+    });
+    var service = new SessionArchiveService(appPaths);
+    var sourceHome = ResolveTestHome(Path.Combine(temp.Path, "source-home"), temp.Path);
+    var targetHome = ResolveTestHome(Path.Combine(temp.Path, "target-home"), temp.Path);
+
+    var sessionRelativePath = Path.Combine("2026", "04", "session-a.jsonl");
+    var archivedRelativePath = Path.Combine("2026", "03", "session-b.jsonl");
+    var sessionText = "{\"timestamp\":\"2026-04-20T00:00:00Z\",\"provider\":\"old-provider\",\"account_id\":\"old-account\",\"message\":\"active\"}\n";
+    var archivedText = "{\"timestamp\":\"2026-03-20T00:00:00Z\",\"model_provider\":\"old-provider\",\"message\":\"archived\"}\n";
+
+    Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(sourceHome.SessionsPath, sessionRelativePath))!);
+    Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(sourceHome.ArchivedSessionsPath, archivedRelativePath))!);
+    await File.WriteAllTextAsync(Path.Combine(sourceHome.SessionsPath, sessionRelativePath), sessionText);
+    await File.WriteAllTextAsync(Path.Combine(sourceHome.ArchivedSessionsPath, archivedRelativePath), archivedText);
+    Directory.CreateDirectory(sourceHome.RootPath);
+    await File.WriteAllTextAsync(Path.Combine(sourceHome.RootPath, "session_index.jsonl"), """
+{"id":"thread-a","thread_name":"A","updated_at":"2026-04-20T00:00:00Z"}
+{"id":"thread-b","thread_name":"B","updated_at":"2026-03-20T00:00:00Z"}
+""");
+    await File.WriteAllTextAsync(sourceHome.ConfigPath, "model_provider = \"old-provider\"");
+    await File.WriteAllTextAsync(sourceHome.AuthPath, "{\"access_token\":\"secret\"}");
+
+    var archivePath = Path.Combine(temp.Path, "history.zip");
+    var exportResult = await service.ExportAsync(sourceHome, archivePath, new SessionArchiveExportOptions(IncludeArchived: true));
+
+    AssertEqual(1, exportResult.SessionsExported);
+    AssertEqual(1, exportResult.ArchivedSessionsExported);
+    AssertTrue(exportResult.SessionIndexExported);
+
+    using (var archive = ZipFile.OpenRead(archivePath))
+    {
+        var entryNames = archive.Entries.Select(entry => entry.FullName).ToList();
+        AssertTrue(entryNames.Contains("manifest.json"));
+        AssertTrue(entryNames.Contains("session_index.jsonl"));
+        AssertTrue(entryNames.Contains("sessions/2026/04/session-a.jsonl"));
+        AssertTrue(entryNames.Contains("archived_sessions/2026/03/session-b.jsonl"));
+        AssertTrue(!entryNames.Contains("config.toml"));
+        AssertTrue(!entryNames.Contains("auth.json"));
+    }
+
+    Directory.CreateDirectory(targetHome.RootPath);
+    await File.WriteAllTextAsync(targetHome.ConfigPath, "current-config");
+    await File.WriteAllTextAsync(targetHome.AuthPath, "current-auth");
+
+    var importResult = await service.ImportAsync(targetHome, archivePath);
+
+    AssertEqual(1, importResult.Sessions.Copied);
+    AssertEqual(1, importResult.ArchivedSessions.Copied);
+    AssertEqual(2, importResult.SessionIndex.Merged);
+    AssertEqual(sessionText, await File.ReadAllTextAsync(Path.Combine(targetHome.SessionsPath, sessionRelativePath)));
+    AssertEqual(archivedText, await File.ReadAllTextAsync(Path.Combine(targetHome.ArchivedSessionsPath, archivedRelativePath)));
+    AssertEqual("current-config", await File.ReadAllTextAsync(targetHome.ConfigPath));
+    AssertEqual("current-auth", await File.ReadAllTextAsync(targetHome.AuthPath));
+}
+
+static async Task SessionArchiveConflictImportTest()
+{
+    using var temp = TempDir.Create();
+    var appPaths = AppPaths.Resolve(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["USERPROFILE"] = Path.Combine(temp.Path, "profile")
+    });
+    var service = new SessionArchiveService(appPaths);
+    var sourceHome = ResolveTestHome(Path.Combine(temp.Path, "source-home"), temp.Path);
+    var targetHome = ResolveTestHome(Path.Combine(temp.Path, "target-home"), temp.Path);
+    var sourceSession = Path.Combine(sourceHome.SessionsPath, "conflict.jsonl");
+    var targetSession = Path.Combine(targetHome.SessionsPath, "conflict.jsonl");
+    var importedSession = Path.Combine(targetHome.SessionsPath, "conflict.imported-1.jsonl");
+    var sourceText = "{\"timestamp\":\"2026-04-21T00:00:00Z\",\"provider\":\"source\"}\n";
+    var targetText = "{\"timestamp\":\"2026-04-21T00:00:00Z\",\"provider\":\"target\"}\n";
+
+    Directory.CreateDirectory(sourceHome.SessionsPath);
+    Directory.CreateDirectory(targetHome.SessionsPath);
+    Directory.CreateDirectory(sourceHome.RootPath);
+    await File.WriteAllTextAsync(sourceSession, sourceText);
+    await File.WriteAllTextAsync(targetSession, targetText);
+    await File.WriteAllTextAsync(Path.Combine(sourceHome.RootPath, "session_index.jsonl"), """
+{"id":"thread-conflict","thread_name":"Conflict","updated_at":"2026-04-21T00:00:00Z"}
+""");
+
+    var archivePath = Path.Combine(temp.Path, "history.zip");
+    await service.ExportAsync(sourceHome, archivePath);
+
+    var firstImport = await service.ImportAsync(targetHome, archivePath);
+    var secondImport = await service.ImportAsync(targetHome, archivePath);
+
+    AssertEqual(0, firstImport.Sessions.Copied);
+    AssertEqual(1, firstImport.Sessions.Renamed);
+    AssertEqual(1, firstImport.SessionIndex.Merged);
+    AssertEqual(targetText, await File.ReadAllTextAsync(targetSession));
+    AssertEqual(sourceText, await File.ReadAllTextAsync(importedSession));
+    AssertEqual(1, secondImport.Sessions.Skipped);
+    AssertEqual(1, secondImport.SessionIndex.Skipped);
+}
+
+static async Task SessionArchiveUnsafePathTest()
+{
+    using var temp = TempDir.Create();
+    var appPaths = AppPaths.Resolve(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["USERPROFILE"] = Path.Combine(temp.Path, "profile")
+    });
+    var service = new SessionArchiveService(appPaths);
+    var targetHome = ResolveTestHome(Path.Combine(temp.Path, "target-home"), temp.Path);
+    var archivePath = Path.Combine(temp.Path, "unsafe.zip");
+
+    using (var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+    {
+        var entry = archive.CreateEntry("sessions/../evil.jsonl");
+        await using var writer = new StreamWriter(entry.Open());
+        await writer.WriteAsync("{}\n");
+    }
+
+    var rejected = false;
+    try
+    {
+        await service.ImportAsync(targetHome, archivePath);
+    }
+    catch (InvalidDataException)
+    {
+        rejected = true;
+    }
+
+    AssertTrue(rejected);
+    AssertTrue(!File.Exists(Path.Combine(temp.Path, "evil.jsonl")));
+    AssertTrue(!Directory.Exists(targetHome.SessionsPath) || !Directory.EnumerateFiles(targetHome.SessionsPath, "*", SearchOption.AllDirectories).Any());
 }
 
 static async Task AccountCsvCompatibleSecretTest()
@@ -1371,6 +1759,13 @@ static CodexActivationService NewActivationService(AppPaths appPaths, InMemorySe
         secrets,
         secrets);
 
+static CodexHomeState ResolveTestHome(string codexHome, string userProfileRoot)
+    => new CodexHomeLocator().Resolve(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CODEX_HOME"] = codexHome,
+        ["USERPROFILE"] = Path.Combine(userProfileRoot, "user")
+    });
+
 static void AssertTrue(bool condition, string? message = null)
 {
     if (!condition)
@@ -1463,6 +1858,118 @@ internal sealed class FakeProcessLauncher : IExternalProcessLauncher
     public void Start(ProcessStartInfo startInfo)
     {
         StartCalls.Add(startInfo);
+    }
+}
+
+internal sealed class FakeCodexDesktopProcessProvider : ICodexDesktopProcessProvider
+{
+    private readonly IReadOnlyList<ICodexDesktopProcess> _processes;
+
+    public FakeCodexDesktopProcessProvider(IReadOnlyList<ICodexDesktopProcess> processes)
+    {
+        _processes = processes;
+    }
+
+    public IReadOnlyList<ICodexDesktopProcess> EnumerateCandidates()
+        => _processes;
+}
+
+internal sealed class FakeCodexDesktopProcess : ICodexDesktopProcess
+{
+    private readonly bool _exitsOnClose;
+    private readonly bool _exitsOnTerminate;
+
+    public FakeCodexDesktopProcess(
+        int id,
+        string processName,
+        string? executablePath,
+        bool hasMainWindow,
+        int? parentProcessId = null,
+        bool exitsOnClose = true,
+        bool exitsOnTerminate = true)
+    {
+        Id = id;
+        ParentProcessId = parentProcessId;
+        ProcessName = processName;
+        ExecutablePath = executablePath;
+        HasMainWindow = hasMainWindow;
+        _exitsOnClose = exitsOnClose;
+        _exitsOnTerminate = exitsOnTerminate;
+    }
+
+    public int Id { get; }
+
+    public int? ParentProcessId { get; }
+
+    public string ProcessName { get; }
+
+    public string? ExecutablePath { get; }
+
+    public bool HasMainWindow { get; }
+
+    public bool HasExited { get; private set; }
+
+    public int CloseRequests { get; private set; }
+
+    public int TerminateRequests { get; private set; }
+
+    public bool RequestClose()
+    {
+        CloseRequests++;
+        if (_exitsOnClose)
+        {
+            HasExited = true;
+        }
+
+        return true;
+    }
+
+    public void Terminate()
+    {
+        TerminateRequests++;
+        if (_exitsOnTerminate)
+        {
+            HasExited = true;
+        }
+    }
+
+    public void MarkExited()
+        => HasExited = true;
+
+    public void Refresh()
+    {
+    }
+
+    public Task WaitForExitAsync(CancellationToken cancellationToken)
+        => HasExited ? Task.CompletedTask : Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+
+    public void Dispose()
+    {
+    }
+}
+
+internal sealed class FakeCodexDesktopForceTerminator : ICodexDesktopForceTerminator
+{
+    private readonly IReadOnlyList<FakeCodexDesktopProcess> _processes;
+
+    public FakeCodexDesktopForceTerminator(IReadOnlyList<FakeCodexDesktopProcess> processes)
+    {
+        _processes = processes;
+    }
+
+    public List<int> AttemptedProcessIds { get; } = [];
+
+    public CodexDesktopForceTerminateResult TryForceTerminateProcess(int processId)
+    {
+        AttemptedProcessIds.Add(processId);
+        var byId = _processes.ToDictionary(process => process.Id);
+        if (!byId.TryGetValue(processId, out var process))
+        {
+            return new CodexDesktopForceTerminateResult(false, $"PID {processId} not found.");
+        }
+
+        process.MarkExited();
+        return new CodexDesktopForceTerminateResult(true);
     }
 }
 

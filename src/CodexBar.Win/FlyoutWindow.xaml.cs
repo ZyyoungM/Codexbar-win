@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using CodexBar.Core;
+using CodexBar.Runtime;
 
 namespace CodexBar.Win;
 
@@ -85,10 +86,59 @@ public partial class FlyoutWindow : Window
     }
 
     private async void LaunchAccount_Click(object sender, RoutedEventArgs e)
-        => await _viewModel.LaunchCodexAsync(ResolveAccountItem(sender));
+        => await LaunchOrRestartCodexAsync(ResolveAccountItem(sender));
 
     private async void ActiveLaunch_Click(object sender, RoutedEventArgs e)
-        => await _viewModel.LaunchCodexAsync(null);
+        => await LaunchOrRestartCodexAsync(null);
+
+    private async Task LaunchOrRestartCodexAsync(AccountListItem? item)
+    {
+        var desktopStatus = await _viewModel.GetCodexDesktopStatusAsync();
+        if (desktopStatus.IsRunning)
+        {
+            if (!await ConfirmRestartCodexDesktopAsync())
+            {
+                return;
+            }
+
+            if (item is not null)
+            {
+                await _viewModel.SwitchAndRestartCodexDesktopAsync(item);
+            }
+            else
+            {
+                await _viewModel.RestartActiveCodexDesktopAsync();
+            }
+
+            return;
+        }
+
+        await _viewModel.LaunchCodexAsync(item);
+    }
+
+    private async Task<bool> ConfirmRestartCodexDesktopAsync()
+    {
+        if (await _viewModel.IsRestartConfirmationSuppressedAsync())
+        {
+            return true;
+        }
+
+        var dialog = new RestartCodexConfirmationDialog
+        {
+            Owner = this
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return false;
+        }
+
+        if (dialog.DoNotAskAgain)
+        {
+            await _viewModel.SetRestartConfirmationSuppressedAsync(true);
+        }
+
+        return true;
+    }
 
     private async void ProbeAccount_Click(object sender, RoutedEventArgs e)
         => await _viewModel.ProbeCompatibleApisAsync(ResolveAccountItem(sender));

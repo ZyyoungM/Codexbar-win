@@ -9,6 +9,13 @@ using CodexBar.Runtime;
 
 namespace CodexBar.Win;
 
+public enum SwitchLaunchAction
+{
+    SwitchOnly,
+    LaunchCodex,
+    RestartCodexDesktop
+}
+
 public sealed class MainFlyoutViewModel : INotifyPropertyChanged
 {
     private readonly AppPaths _appPaths = AppPaths.Resolve();
@@ -246,7 +253,41 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
     }
 
     public async Task UseAsync(AccountListItem item)
-        => await ActivateSelectionAsync(item, forceLaunch: false);
+        => await SwitchOnlyAsync(item);
+
+    public async Task SwitchOnlyAsync(AccountListItem item)
+        => await ActivateSelectionAsync(item, SwitchLaunchAction.SwitchOnly);
+
+    public async Task SwitchAndLaunchCodexAsync(AccountListItem item)
+        => await ActivateSelectionAsync(item, SwitchLaunchAction.LaunchCodex);
+
+    public async Task SwitchAndRestartCodexDesktopAsync(AccountListItem item)
+        => await ActivateSelectionAsync(item, SwitchLaunchAction.RestartCodexDesktop);
+
+    public async Task<CodexDesktopProcessStatus> GetCodexDesktopStatusAsync()
+    {
+        var config = await _appConfigStore.LoadAsync();
+        return new CodexDesktopProcessService().GetStatus(config.Settings.CodexDesktopPath);
+    }
+
+    public async Task<bool> IsRestartConfirmationSuppressedAsync()
+    {
+        var config = await _appConfigStore.LoadAsync();
+        return config.Settings.SuppressRestartConfirmation;
+    }
+
+    public async Task SetRestartConfirmationSuppressedAsync(bool suppressed)
+    {
+        var config = await _appConfigStore.LoadAsync();
+        _config = config with
+        {
+            Settings = config.Settings with
+            {
+                SuppressRestartConfirmation = suppressed
+            }
+        };
+        await _appConfigStore.SaveAsync(_config);
+    }
 
     public async Task LaunchCodexAsync(AccountListItem? item)
     {
@@ -258,13 +299,13 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
             _config = await LoadHydratedConfigAsync(TimeSpan.FromMinutes(1), refreshOfficialUsage: false);
             if (item is not null)
             {
-                await ActivateSelectionAsync(item, forceLaunch: true);
+                await SwitchAndLaunchCodexAsync(item);
                 return;
             }
 
             if (_config.ActiveSelection is null)
             {
-                ErrorText = "\u8BF7\u5148\u9009\u62E9\u4E00\u4E2A\u8D26\u53F7\uFF0C\u6216\u5148\u70B9\u51FB\u201C\u4F7F\u7528\u201D\u6FC0\u6D3B\u8D26\u53F7\u540E\u518D\u542F\u52A8 Codex\u3002";
+                ErrorText = "\u8BF7\u5148\u9009\u62E9\u4E00\u4E2A\u8D26\u53F7\uFF0C\u6216\u5148\u70B9\u51FB\u201C\u5207\u6362\u201D\u6FC0\u6D3B\u8D26\u53F7\u540E\u518D\u542F\u52A8 Codex\u3002";
                 return;
             }
 
@@ -296,17 +337,77 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 MonthlyTokens = "0",
                 FiveHourUsedPercent = 0,
                 WeeklyUsedPercent = 0,
+                FiveHourQuotaLabel = "5h 额度",
+                WeeklyQuotaLabel = "周额度",
                 FiveHourAvailableText = "",
                 WeeklyAvailableText = "",
                 FiveHourProgressBrush = "#107C10",
                 WeeklyProgressBrush = "#107C10"
-            }, forceLaunch: true);
+            }, SwitchLaunchAction.LaunchCodex);
         }
         catch (Exception ex)
         {
             _logger.Error("flyout.launch_failed", ex);
             ErrorText = DiagnosticLogger.Redact(ex.Message);
             ActivityText = "\u542F\u52A8 Codex \u5931\u8D25";
+        }
+    }
+
+    public async Task RestartActiveCodexDesktopAsync()
+    {
+        using var _ = EnterBusy();
+        try
+        {
+            ErrorText = "";
+            ActivityText = "\u6B63\u5728\u51C6\u5907\u91CD\u542F Codex Desktop...";
+            _config = await LoadHydratedConfigAsync(TimeSpan.FromMinutes(1), refreshOfficialUsage: false);
+            if (_config.ActiveSelection is null)
+            {
+                ErrorText = "\u8BF7\u5148\u9009\u62E9\u4E00\u4E2A\u8D26\u53F7\uFF0C\u6216\u5148\u70B9\u51FB\u201C\u5207\u6362\u201D\u6FC0\u6D3B\u8D26\u53F7\u540E\u518D\u91CD\u542F Codex\u3002";
+                return;
+            }
+
+            var activeAccount = _config.Accounts.FirstOrDefault(account =>
+                string.Equals(account.ProviderId, _config.ActiveSelection.ProviderId, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(account.AccountId, _config.ActiveSelection.AccountId, StringComparison.OrdinalIgnoreCase));
+            if (activeAccount is null)
+            {
+                ErrorText = "\u5F53\u524D\u6FC0\u6D3B\u8D26\u53F7\u5DF2\u4E0D\u5B58\u5728\uFF0C\u8BF7\u5148\u91CD\u65B0\u9009\u62E9\u4E00\u4E2A\u8D26\u53F7\u3002";
+                return;
+            }
+
+            await ActivateSelectionAsync(new AccountListItem
+            {
+                ProviderId = activeAccount.ProviderId,
+                AccountId = activeAccount.AccountId,
+                Name = activeAccount.Label,
+                ProviderBadge = "",
+                TierBadgeText = BuildAccountTierBadgeText(activeAccount),
+                Subtitle = "",
+                IsActive = true,
+                IsOpenAi = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(activeAccount),
+                CanProbe = false,
+                CanRefreshOfficialQuota = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(activeAccount),
+                StatusText = "",
+                StatusBrush = "#107C10",
+                DailyTokens = "0",
+                WeeklyTokens = "0",
+                MonthlyTokens = "0",
+                FiveHourUsedPercent = 0,
+                WeeklyUsedPercent = 0,
+                FiveHourQuotaLabel = "5h 额度",
+                WeeklyQuotaLabel = "周额度",
+                FiveHourAvailableText = "",
+                WeeklyAvailableText = "",
+                FiveHourProgressBrush = "#107C10",
+                WeeklyProgressBrush = "#107C10"
+            }, SwitchLaunchAction.RestartCodexDesktop);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("flyout.restart_active_failed", ex);
+            ErrorText = DiagnosticLogger.Redact(ex.Message);
+            ActivityText = "\u91CD\u542F Codex Desktop \u5931\u8D25";
         }
     }
 
@@ -1057,15 +1158,20 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
             .Any(account => !account.OfficialUsageFetchedAt.HasValue || now - account.OfficialUsageFetchedAt.Value >= minRefreshInterval);
     }
 
-    private async Task ActivateSelectionAsync(AccountListItem item, bool forceLaunch)
+    private async Task ActivateSelectionAsync(
+        AccountListItem item,
+        SwitchLaunchAction action)
     {
         using var _ = EnterBusy();
         try
         {
             ErrorText = "";
-            ActivityText = forceLaunch
-                ? "\u6B63\u5728\u5207\u6362\u8D26\u53F7\u5E76\u542F\u52A8 Codex..."
-                : "\u6B63\u5728\u5207\u6362\u8D26\u53F7...";
+            ActivityText = action switch
+            {
+                SwitchLaunchAction.LaunchCodex => "\u6B63\u5728\u5207\u6362\u8D26\u53F7\u5E76\u542F\u52A8 Codex...",
+                SwitchLaunchAction.RestartCodexDesktop => "\u6B63\u5728\u5207\u6362\u8D26\u53F7\u5E76\u91CD\u542F Codex Desktop...",
+                _ => "\u6B63\u5728\u5207\u6362\u8D26\u53F7..."
+            };
             _config = await LoadHydratedConfigAsync(TimeSpan.FromMinutes(1), refreshOfficialUsage: false);
             var requestedSelection = new CodexSelection { ProviderId = item.ProviderId, AccountId = item.AccountId };
             var aggregateDecision = await new OpenAiAggregateGatewayService(_appPaths, _secretStore)
@@ -1106,19 +1212,18 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
             await _appConfigStore.SaveAsync(_config);
             await RefreshAsync("\u6B63\u5728\u5237\u65B0\u9762\u677F...", "\u8D26\u53F7\u5DF2\u5207\u6362\u3002");
 
-            if (forceLaunch)
+            switch (action)
             {
-                await LaunchCurrentCodexAsync("\u5DF2\u6309\u6240\u9009\u8D26\u53F7\u542F\u52A8 Codex\u3002");
-            }
-            else
-            {
-                var launchEnvironment = await CodexLaunchEnvironmentBuilder.BuildAsync(_config, _secretStore);
-                var launchResult = await new CodexLaunchService().LaunchIfConfiguredAsync(_config.Settings, launchEnvironment);
-                if (launchResult.Attempted && !launchResult.Launched)
-                {
-                    ErrorText = $"\u5DF2\u6FC0\u6D3B\uFF0C\u4F46\u542F\u52A8 Codex \u5931\u8D25\uFF1A{launchResult.Message}";
-                    ActivityText = "\u8D26\u53F7\u5DF2\u5207\u6362\uFF0C\u4F46\u542F\u52A8 Codex \u5931\u8D25";
-                }
+                case SwitchLaunchAction.LaunchCodex:
+                    await LaunchCurrentCodexAsync("\u5DF2\u6309\u6240\u9009\u8D26\u53F7\u542F\u52A8 Codex\u3002");
+                    break;
+                case SwitchLaunchAction.RestartCodexDesktop:
+                    await RestartCurrentCodexDesktopAsync(
+                        "\u5DF2\u6309\u6240\u9009\u8D26\u53F7\u91CD\u542F Codex Desktop\u3002");
+                    break;
+                default:
+                    ActivityText = "\u8D26\u53F7\u5DF2\u5207\u6362\u3002\u53EA\u5F71\u54CD\u65B0\u4F1A\u8BDD\uFF1B\u5DF2\u8FD0\u884C\u7684 Codex \u4E0D\u4F1A\u88AB\u6539\u5199\u3002";
+                    break;
             }
 
             if (aggregateDecision.WasRerouted)
@@ -1144,6 +1249,95 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         {
             ErrorText = $"\u542F\u52A8 Codex \u5931\u8D25\uFF1A{launchResult.Message}";
             ActivityText = "\u542F\u52A8 Codex \u5931\u8D25";
+            return;
+        }
+
+        StatusText = $"{StatusText}\n{successPrefix}";
+        ActivityText = successPrefix;
+    }
+
+    private async Task RestartCurrentCodexDesktopAsync(string successPrefix)
+    {
+        using var _ = EnterBusy();
+        var processService = new CodexDesktopProcessService();
+        var status = processService.GetStatus(_config.Settings.CodexDesktopPath);
+        _logger.Info("flyout.restart_detected_processes", new
+        {
+            processes = status.Processes.Select(process => new
+            {
+                process.ProcessId,
+                process.ParentProcessId,
+                process.ProcessName,
+                process.ExecutablePath,
+                process.HasMainWindow
+            }).ToList()
+        });
+        if (!status.IsRunning)
+        {
+            ActivityText = "\u672A\u68C0\u6D4B\u5230\u8FD0\u884C\u4E2D\u7684 Codex Desktop\uFF0C\u6539\u4E3A\u542F\u52A8\u65B0\u7684 Codex...";
+            await LaunchCurrentCodexAsync("\u672A\u68C0\u6D4B\u5230\u8FD0\u884C\u4E2D\u7684 Codex Desktop\uFF0C\u5DF2\u6309\u5F53\u524D\u8D26\u53F7\u542F\u52A8 Codex\u3002");
+            return;
+        }
+
+        ActivityText = "正在关闭 Codex 并清理后台进程...";
+        var closeResult = await processService.RequestCloseAsync(
+            status,
+            _config.Settings.CodexDesktopPath,
+            TimeSpan.FromMilliseconds(250));
+        var remainingAfterClose = processService.GetStatus(_config.Settings.CodexDesktopPath);
+        _logger.Info("flyout.restart_close_result", new
+        {
+            closeResult.CloseRequested,
+            closeResult.AllExited,
+            closeResult.Message,
+            remainingProcesses = remainingAfterClose.Processes.Select(process => new
+            {
+                process.ProcessId,
+                process.ParentProcessId,
+                process.ProcessName,
+                process.ExecutablePath,
+                process.HasMainWindow
+            }).ToList()
+        });
+        if (!closeResult.AllExited)
+        {
+            ActivityText = "正在结束 Codex 后台进程...";
+            var terminateResult = await processService.TerminateAfterUserConfirmationAsync(
+                remainingAfterClose,
+                _config.Settings.CodexDesktopPath,
+                TimeSpan.FromSeconds(4));
+            var remainingAfterTerminate = processService.GetStatus(_config.Settings.CodexDesktopPath);
+            _logger.Info("flyout.restart_terminate_result", new
+            {
+                terminateResult.TerminateRequested,
+                terminateResult.AllExited,
+                terminateResult.Message,
+                terminateResult.AttemptedRootProcessIds,
+                terminateResult.Errors,
+                remainingProcesses = remainingAfterTerminate.Processes.Select(process => new
+                {
+                    process.ProcessId,
+                    process.ParentProcessId,
+                    process.ProcessName,
+                    process.ExecutablePath,
+                    process.HasMainWindow
+                }).ToList()
+            });
+            if (!terminateResult.AllExited)
+            {
+                ErrorText = terminateResult.Message;
+                ActivityText = "\u5DF2\u505C\u6B62\u91CD\u542F\uFF1ACodex Desktop \u4ECD\u5728\u540E\u53F0\u8FD0\u884C";
+                return;
+            }
+        }
+
+        ActivityText = "\u6B63\u5728\u91CD\u65B0\u542F\u52A8 Codex Desktop...";
+        var launchEnvironment = await CodexLaunchEnvironmentBuilder.BuildAsync(_config, _secretStore);
+        var launchResult = await new CodexLaunchService().LaunchAsync(_config.Settings, launchEnvironment);
+        if (!launchResult.Launched)
+        {
+            ErrorText = $"\u91CD\u542F Codex Desktop \u5931\u8D25\uFF1A{launchResult.Message}";
+            ActivityText = "\u91CD\u542F Codex Desktop \u5931\u8D25";
             return;
         }
 
@@ -1259,6 +1453,8 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 MonthlyTokens = FormatTokenCount(usage?.Last30Days.TotalTokens ?? 0, useCompactTokenUnit),
                 FiveHourUsedPercent = fiveHourUsedPercent,
                 WeeklyUsedPercent = weeklyUsedPercent,
+                FiveHourQuotaLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.FiveHourQuota, "5h 额度"),
+                WeeklyQuotaLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.WeeklyQuota, "周额度"),
                 FiveHourAvailableText = BuildAvailableQuotaText(account.FiveHourQuota),
                 WeeklyAvailableText = BuildAvailableQuotaText(account.WeeklyQuota),
                 FiveHourProgressBrush = BuildUsageBrush(fiveHourUsedPercent),
@@ -1583,7 +1779,7 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
             return ActiveAccountSnapshot.Empty with
             {
                 Title = "\u5F53\u524D\u672A\u6FC0\u6D3B\u8D26\u53F7",
-                Subtitle = "\u8BF7\u5148\u5728\u4E3B\u6D6E\u7A97\u9009\u62E9\u4E00\u4E2A\u8D26\u53F7\u5E76\u70B9\u51FB\u201C\u4F7F\u7528\u201D\u3002",
+                Subtitle = "\u8BF7\u5148\u5728\u4E3B\u6D6E\u7A97\u9009\u62E9\u4E00\u4E2A\u8D26\u53F7\u5E76\u70B9\u51FB\u201C\u5207\u6362\u201D\u3002",
                 PrimaryMetric = "\u4ECA\u65E5 0 tokens",
                 SecondaryMetric = "\u8FD1 7 \u5929 0 tokens"
             };
@@ -1637,6 +1833,8 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 ShowQuotaBars = true,
                 FiveHourUsedPercent = fiveHourUsedPercent,
                 WeeklyUsedPercent = weeklyUsedPercent,
+                FiveHourQuotaLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.FiveHourQuota, "5h 额度"),
+                WeeklyQuotaLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.WeeklyQuota, "周额度"),
                 FiveHourAvailableText = BuildAvailableQuotaText(account.FiveHourQuota),
                 WeeklyAvailableText = BuildAvailableQuotaText(account.WeeklyQuota),
                 FiveHourProgressBrush = BuildUsageBrush(fiveHourUsedPercent),
@@ -1756,6 +1954,8 @@ public sealed record AccountListItem
     public required string MonthlyTokens { get; init; }
     public required int FiveHourUsedPercent { get; init; }
     public required int WeeklyUsedPercent { get; init; }
+    public required string FiveHourQuotaLabel { get; init; }
+    public required string WeeklyQuotaLabel { get; init; }
     public required string FiveHourAvailableText { get; init; }
     public required string WeeklyAvailableText { get; init; }
     public required string FiveHourProgressBrush { get; init; }
@@ -1799,6 +1999,8 @@ public sealed record ActiveAccountSnapshot
     public bool ShowTokenGrid { get; init; }
     public int FiveHourUsedPercent { get; init; }
     public int WeeklyUsedPercent { get; init; }
+    public string FiveHourQuotaLabel { get; init; } = "5h 额度";
+    public string WeeklyQuotaLabel { get; init; } = "周额度";
     public string FiveHourAvailableText { get; init; } = "";
     public string WeeklyAvailableText { get; init; } = "";
     public string FiveHourProgressBrush { get; init; } = "#107C10";

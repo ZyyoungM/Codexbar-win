@@ -23,11 +23,21 @@
       <Setter Property="CornerRadius" Value="8" />
     </Style>
 
+    <Style x:Key="PagePanel" TargetType="Border" BasedOn="{StaticResource SectionCard}">
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="Padding" Value="18" />
+    </Style>
+
     <Style x:Key="SectionTitle" TargetType="TextBlock">
       <Setter Property="Foreground" Value="#1C1C1C" />
       <Setter Property="FontSize" Value="13" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Margin" Value="0,0,0,10" />
+    </Style>
+
+    <Style x:Key="PageTitle" TargetType="TextBlock" BasedOn="{StaticResource SectionTitle}">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="Margin" Value="0,0,0,14" />
     </Style>
 
     <Style x:Key="FieldLabel" TargetType="TextBlock">
@@ -98,6 +108,37 @@
       <Setter Property="FontSize" Value="11" />
       <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
+
+    <Style x:Key="SettingsNavItemStyle" TargetType="ListBoxItem">
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="Margin" Value="0,0,0,6" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <Border x:Name="ItemBorder"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="ItemBorder" Property="Background" Value="#F4F8FC" />
+                <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#E7EEF6" />
+              </Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="ItemBorder" Property="Background" Value="#E7F1FB" />
+                <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#CFE4F9" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
   </Window.Resources>
 
   <Grid Margin="16">
@@ -112,241 +153,402 @@
             Style="{StaticResource SectionCard}"
             Background="#F7FAFF"
             BorderBrush="#CFE4F9">
-      <Grid>
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="*" />
-          <ColumnDefinition Width="Auto" />
-        </Grid.ColumnDefinitions>
-
-        <StackPanel>
-          <TextBlock Text="设置"
-                     Foreground="#1C1C1C"
-                     FontSize="17"
-                     FontWeight="SemiBold" />
-          <TextBlock Margin="0,6,0,0"
-                     Text="这些设置只影响 CodexBar 的本地行为与新会话激活流程。真正写入 Codex 当前激活态的仍然只有 config.toml 和 auth.json。"
-                     Foreground="#605E5C"
-                     FontSize="11"
-                     TextWrapping="Wrap" />
-        </StackPanel>
-
-        <StackPanel Grid.Column="1"
-                    Orientation="Horizontal"
-                    VerticalAlignment="Top">
-          <Border Margin="10,0,0,0"
-                  Padding="8,3"
-                  Background="#E7F1FB"
-                  CornerRadius="8">
-            <TextBlock Text="本地设置"
-                       Foreground="#0067C0"
-                       FontSize="10"
-                       FontWeight="SemiBold" />
-          </Border>
-          <Border Margin="8,0,0,0"
-                  Padding="8,3"
-                  Background="#F3F3F3"
-                  CornerRadius="8">
-            <TextBlock Text="不改历史会话"
-                       Foreground="#605E5C"
-                       FontSize="10"
-                       FontWeight="SemiBold" />
-          </Border>
-        </StackPanel>
-      </Grid>
+      <TextBlock Text="设置"
+                 Foreground="#1C1C1C"
+                 FontSize="24"
+                 FontWeight="SemiBold" />
     </Border>
 
-    <ScrollViewer Grid.Row="1"
-                  VerticalScrollBarVisibility="Auto"
-                  HorizontalScrollBarVisibility="Disabled">
-      <StackPanel>
-        <Border Style="{StaticResource SectionCard}">
-          <StackPanel>
-            <TextBlock Text="运行路径与检测" Style="{StaticResource SectionTitle}" />
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="210" />
+        <ColumnDefinition Width="16" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
 
-            <Border Padding="10"
-                    Background="#F7F7F7"
-                    BorderBrush="#11000000"
-                    BorderThickness="1"
-                    CornerRadius="8">
-              <TextBlock x:Name="PathsText" Style="{StaticResource InfoText}" />
-            </Border>
+      <Border Grid.Column="0"
+              Style="{StaticResource SectionCard}"
+              Margin="0"
+              Padding="12">
+        <StackPanel>
+          <TextBlock Text="设置菜单"
+                     Foreground="#605E5C"
+                     FontSize="11"
+                     FontWeight="SemiBold"
+                     Margin="0,0,0,10" />
+          <ListBox x:Name="SettingsNavList"
+                   Background="Transparent"
+                   BorderThickness="0"
+                   SelectionChanged="SettingsNavList_SelectionChanged"
+                   ItemContainerStyle="{StaticResource SettingsNavItemStyle}">
+            <ListBoxItem Tag="runtime">
+              <TextBlock Text="运行路径"
+                         Foreground="#1C1C1C"
+                         FontSize="13"
+                         FontWeight="SemiBold" />
+            </ListBoxItem>
+            <ListBoxItem Tag="behavior">
+              <TextBlock Text="账号排序与行为"
+                         Foreground="#1C1C1C"
+                         FontSize="13"
+                         FontWeight="SemiBold" />
+            </ListBoxItem>
+            <ListBoxItem Tag="import-export">
+              <TextBlock Text="导出/导入"
+                         Foreground="#1C1C1C"
+                         FontSize="13"
+                         FontWeight="SemiBold" />
+            </ListBoxItem>
+            <ListBoxItem Tag="about">
+              <TextBlock Text="关于"
+                         Foreground="#1C1C1C"
+                         FontSize="13"
+                         FontWeight="SemiBold" />
+            </ListBoxItem>
+          </ListBox>
+        </StackPanel>
+      </Border>
 
-            <Grid Margin="0,12,0,0">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0">
-                <TextBlock Text="Codex Desktop 路径" Style="{StaticResource FieldLabel}" />
-                <TextBox x:Name="CodexDesktopPathBox" Style="{StaticResource InputTextBox}" />
+      <Grid Grid.Column="2">
+        <ScrollViewer x:Name="RuntimePathsPage"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <Border Style="{StaticResource PagePanel}">
+            <StackPanel>
+              <TextBlock Text="运行路径" Style="{StaticResource PageTitle}" />
+
+              <Border Padding="10"
+                      Background="#F7F7F7"
+                      BorderBrush="#11000000"
+                      BorderThickness="1"
+                      CornerRadius="8">
+                <TextBlock x:Name="PathsText" Style="{StaticResource InfoText}" />
+              </Border>
+
+              <Grid Margin="0,14,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                  <TextBlock Text="Codex Desktop 路径" Style="{StaticResource FieldLabel}" />
+                  <TextBox x:Name="CodexDesktopPathBox" Style="{StaticResource InputTextBox}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Bottom"
+                            Margin="10,0,0,0">
+                  <Button Content="浏览"
+                          Width="74"
+                          Margin="0,0,8,0"
+                          Style="{StaticResource ActionButton}"
+                          Click="BrowseDesktop_Click" />
+                  <Button Content="探测"
+                          Width="74"
+                          Style="{StaticResource ActionButton}"
+                          Click="DetectDesktop_Click" />
+                </StackPanel>
+              </Grid>
+
+              <Grid Margin="0,14,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                  <TextBlock Text="Codex CLI 路径" Style="{StaticResource FieldLabel}" />
+                  <TextBox x:Name="CodexCliPathBox" Style="{StaticResource InputTextBox}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Bottom"
+                            Margin="10,0,0,0">
+                  <Button Content="浏览"
+                          Width="74"
+                          Margin="0,0,8,0"
+                          Style="{StaticResource ActionButton}"
+                          Click="BrowseCli_Click" />
+                  <Button Content="探测"
+                          Width="74"
+                          Style="{StaticResource ActionButton}"
+                          Click="DetectCli_Click" />
+                </StackPanel>
+              </Grid>
+
+              <StackPanel Margin="0,16,0,0"
+                          Orientation="Horizontal">
+                <Button Content="测试启动 Codex"
+                        Width="128"
+                        Style="{StaticResource PrimaryButton}"
+                        Click="LaunchCodex_Click" />
               </StackPanel>
-              <StackPanel Grid.Column="1"
-                          Orientation="Horizontal"
-                          VerticalAlignment="Bottom"
-                          Margin="10,0,0,0">
-                <Button Content="浏览"
-                        Width="74"
+            </StackPanel>
+          </Border>
+        </ScrollViewer>
+
+        <ScrollViewer x:Name="AccountBehaviorPage"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Visibility="Collapsed">
+          <Border Style="{StaticResource PagePanel}">
+            <StackPanel>
+              <TextBlock Text="账号排序与行为" Style="{StaticResource PageTitle}" />
+
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="16" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                  <TextBlock Text="账号排序方式" Style="{StaticResource FieldLabel}" />
+                  <ComboBox x:Name="AccountSortModeBox"
+                            Width="240"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource InputComboBox}" />
+                  <TextBlock Margin="0,6,0,0"
+                             Style="{StaticResource InfoText}"
+                             Text="手动排序支持拖动卡片；按用量排序会优先考虑额度和最近使用情况。" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2">
+                  <TextBlock Text="切换后行为" Style="{StaticResource FieldLabel}" />
+                  <ComboBox x:Name="ActivationBehaviorBox"
+                            Width="240"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource InputComboBox}" />
+                  <TextBlock Margin="0,6,0,0"
+                             Style="{StaticResource InfoText}"
+                             Text="选择仅改配置，或在切换完成后直接启动新的 Codex。" />
+                </StackPanel>
+              </Grid>
+
+              <Grid Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="16" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                  <TextBlock Text="OpenAI 账号模式" Style="{StaticResource FieldLabel}" />
+                  <ComboBox x:Name="OpenAiAccountModeBox"
+                            Width="240"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource InputComboBox}" />
+                  <TextBlock Margin="0,6,0,0"
+                             Style="{StaticResource InfoText}"
+                             Text="自动模式会根据额度与状态做更合适的选择；手动模式始终使用当前手动选中的账号。" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2">
+                  <TextBlock Text="系统启动" Style="{StaticResource FieldLabel}" />
+                  <CheckBox x:Name="StartupBox"
+                            Content="登录 Windows 时自动启动 CodexBar"
+                            Margin="0,8,0,0" />
+                  <CheckBox x:Name="OpenOverlayOnStartupBox"
+                            Content="启动 CodexBar 时自动打开小浮窗"
+                            Margin="0,12,0,0" />
+                  <CheckBox x:Name="OverlayEnabledBox"
+                            Content="打开小浮窗"
+                            Margin="0,12,0,0"
+                            Checked="OverlayEnabledBox_Checked"
+                            Unchecked="OverlayEnabledBox_Unchecked" />
+                  <TextBlock Margin="0,8,0,0"
+                             Style="{StaticResource InfoText}"
+                             Text="自动打开会在 CodexBar 启动后显示小浮窗；“打开小浮窗”只影响当前运行状态。" />
+                </StackPanel>
+              </Grid>
+
+              <Border Margin="0,16,0,0"
+                      Padding="10"
+                      Background="#F7FAFF"
+                      BorderBrush="#CFE4F9"
+                      BorderThickness="1"
+                      CornerRadius="8">
+                <StackPanel>
+                  <TextBlock Text="重启确认弹窗"
+                             Foreground="#1C1C1C"
+                             FontSize="11"
+                             FontWeight="SemiBold" />
+                  <TextBlock x:Name="RestartPromptStateText"
+                             Margin="0,6,0,0"
+                             Style="{StaticResource InfoText}" />
+                  <Button x:Name="ResetRestartPromptButton"
+                          Content="恢复重启确认弹窗"
+                          Width="138"
+                          Margin="0,10,0,0"
+                          HorizontalAlignment="Left"
+                          Style="{StaticResource ActionButton}"
+                          Click="ResetRestartPrompt_Click" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </Border>
+        </ScrollViewer>
+
+        <ScrollViewer x:Name="ImportExportPage"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Visibility="Collapsed">
+          <Border Style="{StaticResource PagePanel}">
+            <StackPanel>
+              <TextBlock Text="导出/导入" Style="{StaticResource PageTitle}" />
+
+              <TextBlock Text="账号" Style="{StaticResource SectionTitle}" />
+              <CheckBox x:Name="IncludeSecretsBox"
+                        Content="导出 CSV 时包含密钥"
+                        Margin="0,0,0,10" />
+              <StackPanel Orientation="Horizontal">
+                <Button Content="导出账号"
+                        Width="104"
                         Margin="0,0,8,0"
                         Style="{StaticResource ActionButton}"
-                        Click="BrowseDesktop_Click" />
-                <Button Content="探测"
-                        Width="74"
+                        Click="ExportAccounts_Click" />
+                <Button Content="导入账号"
+                        Width="104"
                         Style="{StaticResource ActionButton}"
-                        Click="DetectDesktop_Click" />
+                        Click="ImportAccounts_Click" />
               </StackPanel>
-            </Grid>
-
-            <Grid Margin="0,12,0,0">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0">
-                <TextBlock Text="Codex CLI 路径" Style="{StaticResource FieldLabel}" />
-                <TextBox x:Name="CodexCliPathBox" Style="{StaticResource InputTextBox}" />
-              </StackPanel>
-              <StackPanel Grid.Column="1"
-                          Orientation="Horizontal"
-                          VerticalAlignment="Bottom"
-                          Margin="10,0,0,0">
-                <Button Content="浏览"
-                        Width="74"
-                        Margin="0,0,8,0"
-                        Style="{StaticResource ActionButton}"
-                        Click="BrowseCli_Click" />
-                <Button Content="探测"
-                        Width="74"
-                        Style="{StaticResource ActionButton}"
-                        Click="DetectCli_Click" />
-              </StackPanel>
-            </Grid>
-
-            <Border Margin="0,12,0,0"
-                    Padding="10"
-                    Background="#FAFBFE"
-                    BorderBrush="#D7E7F8"
-                    BorderThickness="1"
-                    CornerRadius="8">
-              <TextBlock x:Name="DetectionText"
+              <TextBlock Margin="0,10,0,0"
                          Style="{StaticResource InfoText}"
-                         Text="可在这里查看路径探测结果。" />
-            </Border>
+                         Text="默认导出不包含密钥；导入只会更新本地配置和凭据，不会重写 shared ~/.codex history pool。" />
 
-            <StackPanel Margin="0,12,0,0"
-                        Orientation="Horizontal">
-              <Button Content="测试启动 Codex"
-                      Width="128"
-                      Style="{StaticResource PrimaryButton}"
-                      Click="LaunchCodex_Click" />
+              <Separator Margin="0,16,0,16" />
+
+              <TextBlock Text="历史会话 ZIP" Style="{StaticResource SectionTitle}" />
+              <CheckBox x:Name="IncludeArchivedHistoryBox"
+                        Content="导出时包含 archived_sessions"
+                        IsChecked="True"
+                        Margin="0,0,0,10" />
+              <StackPanel Orientation="Horizontal">
+                <Button Content="导出历史"
+                        Width="104"
+                        Margin="0,0,8,0"
+                        Style="{StaticResource ActionButton}"
+                        Click="ExportHistory_Click" />
+                <Button Content="导入历史"
+                        Width="104"
+                        Style="{StaticResource ActionButton}"
+                        Click="ImportHistory_Click" />
+              </StackPanel>
+              <TextBlock Margin="0,10,0,0"
+                         Style="{StaticResource InfoText}"
+                         Text="历史 ZIP 只包含 sessions、archived_sessions 和 session_index.jsonl；导入会合并历史，建议先关闭 Codex，且不会触碰 config.toml、auth.json 或密钥。" />
             </StackPanel>
-          </StackPanel>
-        </Border>
+          </Border>
+        </ScrollViewer>
 
-        <Border Style="{StaticResource SectionCard}">
-          <StackPanel>
-            <TextBlock Text="行为与排序" Style="{StaticResource SectionTitle}" />
+        <ScrollViewer x:Name="AboutPage"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Visibility="Collapsed">
+          <Border Style="{StaticResource PagePanel}">
+            <StackPanel>
+              <TextBlock Text="关于" Style="{StaticResource PageTitle}" />
 
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="16" />
-                <ColumnDefinition Width="*" />
-              </Grid.ColumnDefinitions>
-
-              <StackPanel Grid.Column="0">
-                <TextBlock Text="账号排序方式" Style="{StaticResource FieldLabel}" />
-                <ComboBox x:Name="AccountSortModeBox"
-                          Width="240"
+              <Border Padding="14"
+                      Background="#F7FAFF"
+                      BorderBrush="#CFE4F9"
+                      BorderThickness="1"
+                      CornerRadius="8">
+                <StackPanel>
+                  <TextBlock Text="CodexBar for Windows"
+                             Foreground="#1C1C1C"
+                             FontSize="18"
+                             FontWeight="SemiBold" />
+                  <TextBlock x:Name="AboutSummaryText"
+                             Margin="0,8,0,0"
+                             Style="{StaticResource InfoText}" />
+                  <TextBlock x:Name="AboutVersionText"
+                             Margin="0,10,0,0"
+                             Foreground="#1C1C1C"
+                             FontSize="11"
+                             FontWeight="SemiBold"
+                             TextWrapping="Wrap" />
+                  <TextBlock x:Name="AboutEnvironmentText"
+                              Margin="0,6,0,0"
+                              Style="{StaticResource InfoText}" />
+                  <TextBlock Text="GitHub"
+                             Margin="0,10,0,0"
+                             Foreground="#1C1C1C"
+                             FontSize="11"
+                             FontWeight="SemiBold" />
+                  <TextBlock x:Name="AboutProjectUrlText"
+                             Margin="0,4,0,0"
+                             Foreground="#0067C0"
+                             FontSize="11"
+                             TextWrapping="Wrap" />
+                  <Button Content="打开 GitHub"
+                          Width="96"
+                          Margin="0,10,0,0"
                           HorizontalAlignment="Left"
-                          Style="{StaticResource InputComboBox}" />
-                <TextBlock Margin="0,6,0,0"
-                           Style="{StaticResource InfoText}"
-                           Text="手动排序支持拖动卡片；按用量排序会优先考虑额度和最近使用情况。" />
-              </StackPanel>
+                          Style="{StaticResource ActionButton}"
+                          Click="OpenProjectGitHub_Click" />
+                </StackPanel>
+              </Border>
 
-              <StackPanel Grid.Column="2">
-                <TextBlock Text="激活后行为" Style="{StaticResource FieldLabel}" />
-                <ComboBox x:Name="ActivationBehaviorBox"
-                          Width="240"
-                          HorizontalAlignment="Left"
-                          Style="{StaticResource InputComboBox}" />
-                <TextBlock Margin="0,6,0,0"
-                           Style="{StaticResource InfoText}"
-                           Text="选择仅改配置，或在切换完成后直接启动新的 Codex。" />
-              </StackPanel>
-            </Grid>
+              <Border Margin="0,16,0,0"
+                      Padding="14"
+                      Background="White"
+                      BorderBrush="#11000000"
+                      BorderThickness="1"
+                      CornerRadius="8">
+                <StackPanel>
+                  <TextBlock Text="兼容说明" Style="{StaticResource SectionTitle}" />
+                  <TextBlock x:Name="AboutCompatibilityText"
+                             Style="{StaticResource InfoText}" />
+                </StackPanel>
+              </Border>
 
-            <Grid Margin="0,14,0,0">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="16" />
-                <ColumnDefinition Width="*" />
-              </Grid.ColumnDefinitions>
+              <Border Margin="0,16,0,0"
+                      Padding="14"
+                      Background="White"
+                      BorderBrush="#11000000"
+                      BorderThickness="1"
+                      CornerRadius="8">
+                <StackPanel>
+                  <TextBlock Text="路径与诊断" Style="{StaticResource SectionTitle}" />
+                  <TextBlock x:Name="AboutPathsText"
+                             Style="{StaticResource InfoText}" />
+                  <StackPanel Orientation="Horizontal"
+                              Margin="0,12,0,0">
+                    <Button Content="打开日志目录"
+                            Width="104"
+                            Margin="0,0,8,0"
+                            Style="{StaticResource ActionButton}"
+                            Click="OpenLogsDirectory_Click" />
+                    <Button Content="打开配置目录"
+                            Width="104"
+                            Margin="0,0,8,0"
+                            Style="{StaticResource ActionButton}"
+                            Click="OpenAppStateDirectory_Click" />
+                    <Button Content="复制诊断信息"
+                            Width="116"
+                            Style="{StaticResource ActionButton}"
+                            Click="CopyDiagnostics_Click" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
 
-              <StackPanel Grid.Column="0">
-                <TextBlock Text="OpenAI 账号模式" Style="{StaticResource FieldLabel}" />
-                <ComboBox x:Name="OpenAiAccountModeBox"
-                          Width="240"
-                          HorizontalAlignment="Left"
-                          Style="{StaticResource InputComboBox}" />
-                <TextBlock Margin="0,6,0,0"
-                           Style="{StaticResource InfoText}"
-                           Text="自动模式会根据额度与状态做更合适的选择；手动模式始终使用当前手动选中的账号。" />
-              </StackPanel>
-
-              <StackPanel Grid.Column="2">
-                <TextBlock Text="系统启动" Style="{StaticResource FieldLabel}" />
-                <CheckBox x:Name="StartupBox"
-                          Content="登录 Windows 时自动启动 CodexBar"
-                          Margin="0,8,0,0" />
-                <CheckBox x:Name="OverlayEnabledBox"
-                          Content="打开小浮窗"
-                          Margin="0,12,0,0"
-                          Checked="OverlayEnabledBox_Checked"
-                          Unchecked="OverlayEnabledBox_Unchecked" />
-                <TextBlock Margin="0,8,0,0"
-                           Style="{StaticResource InfoText}"
-                           Text="登录启动只影响 CodexBar 本身；小浮窗开关会立即生效，可在这里直接打开或关闭。" />
-              </StackPanel>
-            </Grid>
-          </StackPanel>
-        </Border>
-
-        <Border Style="{StaticResource SectionCard}">
-          <StackPanel>
-            <TextBlock Text="账号 CSV" Style="{StaticResource SectionTitle}" />
-            <CheckBox x:Name="IncludeSecretsBox"
-                      Content="导出 CSV 时包含密钥"
-                      Margin="0,0,0,10" />
-            <StackPanel Orientation="Horizontal">
-              <Button Content="导出账号"
-                      Width="104"
-                      Margin="0,0,8,0"
-                      Style="{StaticResource ActionButton}"
-                      Click="ExportAccounts_Click" />
-              <Button Content="导入账号"
-                      Width="104"
-                      Style="{StaticResource ActionButton}"
-                      Click="ImportAccounts_Click" />
+              <Border Margin="0,16,0,0"
+                      Padding="14"
+                      Background="White"
+                      BorderBrush="#11000000"
+                      BorderThickness="1"
+                      CornerRadius="8">
+                <StackPanel>
+                  <TextBlock Text="版权与许可证" Style="{StaticResource SectionTitle}" />
+                  <TextBlock x:Name="AboutFooterText"
+                             Style="{StaticResource InfoText}" />
+                </StackPanel>
+              </Border>
             </StackPanel>
-            <TextBlock Margin="0,10,0,0"
-                       Style="{StaticResource InfoText}"
-                       Text="默认导出不包含密钥；导入只会更新本地配置和凭据，不会重写 shared ~/.codex history pool。" />
-          </StackPanel>
-        </Border>
-
-        <Border Style="{StaticResource SectionCard}"
-                Margin="0,0,0,0"
-                Background="#F7F7F7">
-          <StackPanel>
-            <TextBlock Text="兼容边界" Style="{StaticResource SectionTitle}" />
-            <TextBlock Style="{StaticResource InfoText}" Text="切换只会更新当前激活态，影响之后的新会话。" />
-            <TextBlock Margin="0,6,0,0" Style="{StaticResource InfoText}" Text="shared ~/.codex history pool 保持不拆分。" />
-            <TextBlock Margin="0,6,0,0" Style="{StaticResource InfoText}" Text="sessions / archived_sessions 保持原有语义，不做改写。" />
-          </StackPanel>
-        </Border>
-      </StackPanel>
-    </ScrollViewer>
+          </Border>
+        </ScrollViewer>
+      </Grid>
+    </Grid>
 
     <Border Grid.Row="2"
             Margin="0,12,0,0"
@@ -369,26 +571,18 @@
             BorderBrush="#11000000"
             BorderThickness="1"
             CornerRadius="8">
-      <DockPanel LastChildFill="False">
-        <TextBlock DockPanel.Dock="Left"
-                   VerticalAlignment="Center"
-                   Foreground="#605E5C"
-                   FontSize="10"
-                   Text="保存后继续作为独立设置窗口工作，不会把它改成主浮窗里的路由页。" />
-        <StackPanel DockPanel.Dock="Right"
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Right">
-          <Button Content="取消"
-                  Width="78"
-                  Margin="0,0,8,0"
-                  Style="{StaticResource SubtleButton}"
-                  Click="Cancel_Click" />
-          <Button Content="保存"
-                  Width="78"
-                  Style="{StaticResource PrimaryButton}"
-                  Click="Save_Click" />
-        </StackPanel>
-      </DockPanel>
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right">
+        <Button Content="取消"
+                Width="78"
+                Margin="0,0,8,0"
+                Style="{StaticResource SubtleButton}"
+                Click="Cancel_Click" />
+        <Button Content="保存"
+                Width="78"
+                Style="{StaticResource PrimaryButton}"
+                Click="Save_Click" />
+      </StackPanel>
     </Border>
   </Grid>
 </Window>

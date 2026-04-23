@@ -28,6 +28,7 @@ export function SettingsWindow({ theme = 'light', onSaved }: SettingsWindowProps
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const historyInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadSettings = async () => {
     setBusy(true);
@@ -96,20 +97,24 @@ export function SettingsWindow({ theme = 'light', onSaved }: SettingsWindowProps
     }
   };
 
+  const downloadBlob = (fileName: string, blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const exportCsv = async () => {
     setBusy(true);
     setError('');
     setMessage('');
     try {
       const { fileName, blob } = await codexbarApi.exportAccountsCsv(false);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = fileName;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(fileName, blob);
       setMessage(`已导出: ${fileName}`);
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : '导出失败');
@@ -133,6 +138,43 @@ export function SettingsWindow({ theme = 'light', onSaved }: SettingsWindowProps
       }
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : '导入失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportHistory = async () => {
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const { fileName, blob } = await codexbarApi.exportHistoryZip(true);
+      downloadBlob(fileName, blob);
+      setMessage(`已导出历史会话: ${fileName}`);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : '历史会话导出失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const importHistory = async (file: File) => {
+    if (!window.confirm('导入会合并 sessions、archived_sessions 和 session_index.jsonl，不会触碰 config.toml、auth.json 或密钥。建议先关闭正在运行的 Codex 后再继续。')) {
+      return;
+    }
+
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await codexbarApi.importHistoryZip(file);
+      if (result.ok) {
+        setMessage(result.message);
+      } else {
+        setError(result.message);
+      }
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : '历史会话导入失败');
     } finally {
       setBusy(false);
     }
@@ -356,12 +398,18 @@ export function SettingsWindow({ theme = 'light', onSaved }: SettingsWindowProps
 
           <div className="mb-6">
             <h3 className={`text-[15px] font-medium mb-3 ${isDark ? 'text-white/90' : 'text-[#1c1c1c]'}`}>导入/导出</h3>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Windows11Button variant="secondary" size="md" theme={theme} onClick={() => void exportCsv()} disabled={busy}>
                 导出 CSV
               </Windows11Button>
               <Windows11Button variant="secondary" size="md" theme={theme} onClick={() => fileInputRef.current?.click()} disabled={busy}>
                 从 CSV 导入
+              </Windows11Button>
+              <Windows11Button variant="secondary" size="md" theme={theme} onClick={() => void exportHistory()} disabled={busy}>
+                导出历史 ZIP
+              </Windows11Button>
+              <Windows11Button variant="secondary" size="md" theme={theme} onClick={() => historyInputRef.current?.click()} disabled={busy}>
+                导入历史 ZIP
               </Windows11Button>
               <input
                 ref={fileInputRef}
@@ -376,10 +424,23 @@ export function SettingsWindow({ theme = 'light', onSaved }: SettingsWindowProps
                   event.target.value = '';
                 }}
               />
+              <input
+                ref={historyInputRef}
+                className="hidden"
+                type="file"
+                accept=".zip,application/zip"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    void importHistory(file);
+                  }
+                  event.target.value = '';
+                }}
+              />
             </div>
             <div className={`mt-2 p-3 rounded border ${isDark ? 'bg-[#faa21b]/10 border-[#faa21b]/30' : 'bg-[#fff4ce] border-[#fde7a8]'}`}>
               <div className={`text-[11px] ${isDark ? 'text-white/80' : 'text-[#3d3d3d]'}`}>
-                导出包含账号配置；导入会更新本地配置并保持历史会话目录结构不变。
+                账号 CSV 只迁移账号配置；历史 ZIP 只迁移 sessions、archived_sessions 和 session_index.jsonl，不包含密钥，也不会改写 config.toml 或 auth.json。
               </div>
             </div>
           </div>

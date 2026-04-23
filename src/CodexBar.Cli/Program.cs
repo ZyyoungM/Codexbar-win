@@ -44,6 +44,12 @@ try
         case "import-accounts":
             await ImportAccountsAsync(args.Skip(1).ToArray());
             break;
+        case "export-history":
+            await ExportHistoryAsync(args.Skip(1).ToArray());
+            break;
+        case "import-history":
+            await ImportHistoryAsync(args.Skip(1).ToArray());
+            break;
         case "activate":
             await ActivateAsync(args.Skip(1).ToArray());
             break;
@@ -253,6 +259,41 @@ async Task ImportAccountsAsync(string[] commandArgs)
     }
 }
 
+async Task ExportHistoryAsync(string[] commandArgs)
+{
+    var options = ParseOptions(commandArgs);
+    var path = Required(options, "path");
+    var result = await new SessionArchiveService(appPaths)
+        .ExportAsync(homeLocator.Resolve(), path, new SessionArchiveExportOptions(!options.ContainsKey("skip-archived")));
+
+    Console.WriteLine($"exported_history: {result.ArchivePath}");
+    Console.WriteLine($"sessions: {result.SessionsExported}");
+    Console.WriteLine($"archived_sessions: {result.ArchivedSessionsExported}");
+    Console.WriteLine($"session_index: {result.SessionIndexExported}");
+    Console.WriteLine($"files_skipped: {result.FilesSkipped}");
+}
+
+async Task ImportHistoryAsync(string[] commandArgs)
+{
+    var options = ParseOptions(commandArgs);
+    var path = Required(options, "path");
+    var result = await new SessionArchiveService(appPaths)
+        .ImportAsync(homeLocator.Resolve(), path);
+
+    Console.WriteLine($"sessions_copied: {result.Sessions.Copied}");
+    Console.WriteLine($"sessions_skipped: {result.Sessions.Skipped}");
+    Console.WriteLine($"sessions_renamed: {result.Sessions.Renamed}");
+    Console.WriteLine($"archived_sessions_copied: {result.ArchivedSessions.Copied}");
+    Console.WriteLine($"archived_sessions_skipped: {result.ArchivedSessions.Skipped}");
+    Console.WriteLine($"archived_sessions_renamed: {result.ArchivedSessions.Renamed}");
+    Console.WriteLine($"session_index_merged: {result.SessionIndex.Merged}");
+    Console.WriteLine($"session_index_skipped: {result.SessionIndex.Skipped}");
+    if (!string.IsNullOrWhiteSpace(result.SessionIndexBackupPath))
+    {
+        Console.WriteLine($"session_index_backup: {result.SessionIndexBackupPath}");
+    }
+}
+
 async Task ActivateAsync(string[] commandArgs)
 {
     var options = ParseOptions(commandArgs);
@@ -443,7 +484,8 @@ static string Required(Dictionary<string, string> options, string name)
         : throw new ArgumentException($"Missing --{name}");
 
 static bool IsBooleanFlag(string name)
-    => string.Equals(name, "include-secrets", StringComparison.OrdinalIgnoreCase);
+    => string.Equals(name, "include-secrets", StringComparison.OrdinalIgnoreCase)
+       || string.Equals(name, "skip-archived", StringComparison.OrdinalIgnoreCase);
 
 static List<T> Upsert<T>(IEnumerable<T> source, Func<T, bool> predicate, T item)
 {
@@ -496,6 +538,8 @@ static void PrintHelp()
     Console.WriteLine("  add-compatible --provider-id <id> [--codex-provider-id <id>] --name <name> --base-url <url> --account-id <id> --label <label> --api-key <key>");
     Console.WriteLine("  export-accounts --path <csv> [--include-secrets]");
     Console.WriteLine("  import-accounts --path <csv>");
+    Console.WriteLine("  export-history --path <zip> [--skip-archived]");
+    Console.WriteLine("  import-history --path <zip>");
     Console.WriteLine("  activate --provider-id <id> --account-id <id>");
     Console.WriteLine("  resolve-openai [--provider-id <id>] [--account-id <id>]");
     Console.WriteLine("  config show");
