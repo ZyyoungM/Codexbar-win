@@ -1,6 +1,6 @@
 # CodexBar Windows Implementation Progress
 
-Last updated: 2026-04-20
+Last updated: 2026-04-24
 
 This file is the project progress ledger. Whenever a feature is added, changed, removed, or meaningfully fixed, update this document in the same change.
 
@@ -177,6 +177,12 @@ Enable aggregate mode in app config:
 ```
 
 ## Recent Change Log
+
+### 2026-04-24
+
+- Bumped project version metadata to `0.3.1` and aligned README / CHANGELOG / portable package naming around `CodexBar-portable-win-x64-v0.3.1`.
+- Fixed the portable-package Codex Desktop launch path by switching the package entry scripts to `CodexBar.Win.exe` instead of `dotnet.exe CodexBar.Win.dll`.
+- Expanded desktop launch environment sanitization to remove inherited `.NET` runtime variables before starting Codex Desktop from the portable build.
 
 ### 2026-04-23
 

@@ -32,6 +32,28 @@ public sealed class ExternalProcessLauncher : IExternalProcessLauncher
 
 public sealed class CodexLaunchService
 {
+    private static readonly string[] DesktopEnvironmentVariablesToRemove =
+    [
+        "ELECTRON_RUN_AS_NODE",
+        "NODE_OPTIONS",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE",
+        "CODEX_SHELL",
+        "CODEX_THREAD_ID",
+        "DOTNET_ROOT",
+        "DOTNET_ROOT_X64",
+        "DOTNET_ROOT_X86",
+        "DOTNET_ROOT_ARM64",
+        "DOTNET_ROOT(x86)",
+        "DOTNET_HOST_PATH",
+        "DOTNET_CLI_HOME",
+        "DOTNET_MULTILEVEL_LOOKUP",
+        "DOTNET_BUNDLE_EXTRACT_BASE_DIR",
+        "DOTNET_ADDITIONAL_DEPS",
+        "DOTNET_SHARED_STORE",
+        "DOTNET_STARTUP_HOOKS",
+        "NUGET_PACKAGES"
+    ];
+
     private readonly CodexDesktopLocator _desktopLocator;
     private readonly CodexCliLocator _cliLocator;
     private readonly IExternalProcessLauncher _processLauncher;
@@ -169,11 +191,10 @@ public sealed class CodexLaunchService
 
     private static void SanitizeDesktopEnvironment(ProcessStartInfo startInfo)
     {
-        RemoveEnvironmentVariable(startInfo, "ELECTRON_RUN_AS_NODE");
-        RemoveEnvironmentVariable(startInfo, "NODE_OPTIONS");
-        RemoveEnvironmentVariable(startInfo, "CODEX_INTERNAL_ORIGINATOR_OVERRIDE");
-        RemoveEnvironmentVariable(startInfo, "CODEX_SHELL");
-        RemoveEnvironmentVariable(startInfo, "CODEX_THREAD_ID");
+        foreach (var name in DesktopEnvironmentVariablesToRemove)
+        {
+            RemoveEnvironmentVariable(startInfo, name);
+        }
     }
 
     private static void ApplyEnvironmentVariables(

@@ -3,7 +3,7 @@
 
 # CodexBar for Windows
 
-当前版本：`v0.3.0`
+当前版本：`v0.3.1`
 
 CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/lizhelang/codexbar) 的 Windows 原生移植版。它的目标不是重做 Codex，而是在 Windows 上提供一个更顺手的账号与 Provider 切换入口，让你在**不拆分本地 `.codex` 历史池**的前提下管理 OpenAI 官方账号和第三方兼容接口。
 
@@ -33,11 +33,11 @@ CodexBar for Windows 的日常交互主要围绕两类界面展开：
 
 ### 方式一：推荐使用便携包（下载后即用）
 
-如果你只是想直接使用 CodexBar，推荐优先使用便携包，直接去 release 下载 `CodexBar-portable-win-x64-v0.3.0.zip`。
+如果你只是想直接使用 CodexBar，推荐优先使用便携包，直接去 release 下载 `CodexBar-portable-win-x64-v0.3.1.zip`。
 
 拿到压缩包后，按下面 3 步即可开始使用：
 
-1. 解压 `CodexBar-portable-win-x64-v0.3.0.zip`
+1. 解压 `CodexBar-portable-win-x64-v0.3.1.zip`
 2. 进入解压后的目录
 3. 双击 `start-codexbar.cmd`
 
@@ -182,13 +182,11 @@ dotnet run --project .\src\CodexBar.Cli\CodexBar.Cli.csproj -- import-history --
 
 `README.md` 只保留相对上个版本的简要说明，详细变更请看 [CHANGELOG.md](./CHANGELOG.md)。
 
-### v0.3.0 - 2026-04-23
+### v0.3.1 - 2026-04-24
 
-- 主浮窗“切换 / 启动”流程升级：切换只影响新会话；检测到 Codex Desktop 已运行时会确认后关闭窗口和后台进程，再按当前账号重启
-- 托盘右键菜单新增快速选择账号 / API，官方账号显示精简额度，例如 `账号名 (50%/90%)`
-- 设置页改为左侧分页导航，新增“关于”、自动打开小浮窗、恢复重启确认弹窗等入口
-- 新增历史会话 ZIP 导出 / 导入，只迁移 `sessions`、`archived_sessions` 和 `session_index.jsonl`，不触碰账号凭据
-- 主浮窗细节同步优化：顶部按钮在启动过程中保持可用，额度标题按实际套餐显示，账号操作文案统一为“切换”
+- 修复便携包通过主浮窗启动 Codex Desktop 后闪退的问题，便携包入口现在直接启动 `CodexBar.Win.exe`
+- 启动 Codex Desktop 前会额外清理 `.NET` 相关环境变量，避免便携包运行时污染子进程
+- 重新生成 `CodexBar-portable-win-x64-v0.3.1.zip`，用于正式补丁发布
 
 ## License
 

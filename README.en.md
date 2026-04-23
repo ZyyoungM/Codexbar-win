@@ -3,7 +3,7 @@
 
 # CodexBar for Windows
 
-Current version: `v0.3.0`
+Current version: `v0.3.1`
 
 CodexBar for Windows is a Windows-native port of the macOS project [`lizhelang/codexbar`](https://github.com/lizhelang/codexbar). The goal is not to rebuild Codex itself, but to provide a smoother Windows entry point for switching accounts and providers while letting you manage official OpenAI accounts and third-party compatible APIs **without splitting the local `.codex` history pool**.
 
@@ -33,11 +33,11 @@ The day-to-day experience of CodexBar for Windows mainly revolves around two UI 
 
 ### Option 1: Recommended portable package (download and run)
 
-If you just want to use CodexBar directly, the recommended path is to download `CodexBar-portable-win-x64-v0.3.0.zip` from the release page.
+If you just want to use CodexBar directly, the recommended path is to download `CodexBar-portable-win-x64-v0.3.1.zip` from the release page.
 
 After downloading the archive, you can get started in 3 steps:
 
-1. Extract `CodexBar-portable-win-x64-v0.3.0.zip`
+1. Extract `CodexBar-portable-win-x64-v0.3.1.zip`
 2. Open the extracted folder
 3. Double-click `start-codexbar.cmd`
 
@@ -182,13 +182,11 @@ The Windows porting work in this project builds on the product direction and imp
 
 `README.md` only keeps a short summary of changes relative to the previous version. For full details, see [CHANGELOG.md](./CHANGELOG.md).
 
-### v0.3.0 - 2026-04-23
+### v0.3.1 - 2026-04-24
 
-- Upgraded the main flyout switch / launch flow: switching only affects new sessions, and running Codex Desktop instances are restarted only after explicit confirmation
-- Added tray right-click quick account/API selection, with official OpenAI accounts showing compact quota such as `Account (50%/90%)`
-- Reworked Settings into left-side navigation pages and added About, auto-open mini overlay, and restore restart-confirmation actions
-- Added session-history ZIP export/import for `sessions`, `archived_sessions`, and `session_index.jsonl` without touching credentials
-- Refined main flyout details: top actions stay usable while launching, quota titles follow the real plan, and account actions consistently say "Switch"
+- Fixed a portable-package crash path where launching Codex Desktop from the main flyout could immediately exit; the portable launcher now starts `CodexBar.Win.exe` directly
+- Clear additional `.NET` runtime environment variables before starting Codex Desktop so the bundled portable runtime does not leak into child processes
+- Regenerated `CodexBar-portable-win-x64-v0.3.1.zip` for the formal patch release
 
 ## License
 

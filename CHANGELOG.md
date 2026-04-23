@@ -1,5 +1,11 @@
 # 更新日志
 
+## v0.3.1
+
+- 修复便携包通过主浮窗启动 Codex Desktop 后闪退的问题：便携包启动脚本从 `dotnet.exe CodexBar.Win.dll` 改为直接启动 `CodexBar.Win.exe`
+- 启动 Codex Desktop 前额外清理 `.NET` 相关环境变量，避免便携包运行时污染子进程并导致 Desktop 闪退
+- 补充桌面启动环境回归测试，并重新生成 `CodexBar-portable-win-x64-v0.3.1.zip` 作为正式补丁包
+
 ## v0.3.0
 
 - 主浮窗“切换 / 启动”流程升级：先执行仅切换，只更新 `config.toml` / `auth.json` 并明确只影响新会话；切换后按钮进入启动路径。

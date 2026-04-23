@@ -1028,6 +1028,12 @@ static async Task LaunchServiceDesktopTest()
     Environment.SetEnvironmentVariable("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", "Codex Desktop");
     Environment.SetEnvironmentVariable("CODEX_SHELL", "1");
     Environment.SetEnvironmentVariable("CODEX_THREAD_ID", "test-thread");
+    Environment.SetEnvironmentVariable("DOTNET_ROOT", @"D:\portable\.dotnet");
+    Environment.SetEnvironmentVariable("DOTNET_ROOT_X64", @"D:\portable\.dotnet");
+    Environment.SetEnvironmentVariable("DOTNET_CLI_HOME", @"D:\portable");
+    Environment.SetEnvironmentVariable("DOTNET_MULTILEVEL_LOOKUP", "0");
+    Environment.SetEnvironmentVariable("DOTNET_HOST_PATH", @"D:\portable\.dotnet\dotnet.exe");
+    Environment.SetEnvironmentVariable("NUGET_PACKAGES", @"D:\portable\.nuget\packages");
     var launcher = new FakeProcessLauncher();
     var service = new CodexLaunchService(processLauncher: launcher);
     try
@@ -1048,6 +1054,12 @@ static async Task LaunchServiceDesktopTest()
         AssertTrue(!HasEnvironmentVariable(startInfo, "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"));
         AssertTrue(!HasEnvironmentVariable(startInfo, "CODEX_SHELL"));
         AssertTrue(!HasEnvironmentVariable(startInfo, "CODEX_THREAD_ID"));
+        AssertTrue(!HasEnvironmentVariable(startInfo, "DOTNET_ROOT"));
+        AssertTrue(!HasEnvironmentVariable(startInfo, "DOTNET_ROOT_X64"));
+        AssertTrue(!HasEnvironmentVariable(startInfo, "DOTNET_CLI_HOME"));
+        AssertTrue(!HasEnvironmentVariable(startInfo, "DOTNET_MULTILEVEL_LOOKUP"));
+        AssertTrue(!HasEnvironmentVariable(startInfo, "DOTNET_HOST_PATH"));
+        AssertTrue(!HasEnvironmentVariable(startInfo, "NUGET_PACKAGES"));
     }
     finally
     {
@@ -1055,6 +1067,12 @@ static async Task LaunchServiceDesktopTest()
         Environment.SetEnvironmentVariable("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", null);
         Environment.SetEnvironmentVariable("CODEX_SHELL", null);
         Environment.SetEnvironmentVariable("CODEX_THREAD_ID", null);
+        Environment.SetEnvironmentVariable("DOTNET_ROOT", null);
+        Environment.SetEnvironmentVariable("DOTNET_ROOT_X64", null);
+        Environment.SetEnvironmentVariable("DOTNET_CLI_HOME", null);
+        Environment.SetEnvironmentVariable("DOTNET_MULTILEVEL_LOOKUP", null);
+        Environment.SetEnvironmentVariable("DOTNET_HOST_PATH", null);
+        Environment.SetEnvironmentVariable("NUGET_PACKAGES", null);
     }
 }
 

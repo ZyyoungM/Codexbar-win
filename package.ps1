@@ -73,7 +73,8 @@ Invoke-DotNet @(
     "--no-restore",
     "--configuration", $Configuration,
     "-m:1",
-    "-p:UseSharedCompilation=false"
+    "-p:UseSharedCompilation=false",
+    "-p:RunAnalyzers=false"
 )
 
 $appDll = Join-Path $buildOutput "CodexBar.Win.dll"
@@ -99,8 +100,9 @@ $startScript = @'
 setlocal
 set "APP_ROOT=%~dp0"
 set "DOTNET_ROOT=%APP_ROOT%.dotnet"
-set "PATH=%DOTNET_ROOT%;%PATH%"
-start "" /D "%APP_ROOT%" "%DOTNET_ROOT%\dotnet.exe" "%APP_ROOT%CodexBar.Win.dll" %*
+set "DOTNET_ROOT_X64=%APP_ROOT%.dotnet"
+set "DOTNET_MULTILEVEL_LOOKUP=0"
+start "" /D "%APP_ROOT%" "%APP_ROOT%CodexBar.Win.exe" %*
 '@
 Set-Content -LiteralPath (Join-Path $packageRoot "start-codexbar.cmd") -Value $startScript -Encoding ASCII
 
@@ -109,8 +111,9 @@ $settingsScript = @'
 setlocal
 set "APP_ROOT=%~dp0"
 set "DOTNET_ROOT=%APP_ROOT%.dotnet"
-set "PATH=%DOTNET_ROOT%;%PATH%"
-start "" /D "%APP_ROOT%" "%DOTNET_ROOT%\dotnet.exe" "%APP_ROOT%CodexBar.Win.dll" --settings
+set "DOTNET_ROOT_X64=%APP_ROOT%.dotnet"
+set "DOTNET_MULTILEVEL_LOOKUP=0"
+start "" /D "%APP_ROOT%" "%APP_ROOT%CodexBar.Win.exe" --settings
 '@
 Set-Content -LiteralPath (Join-Path $packageRoot "open-settings.cmd") -Value $settingsScript -Encoding ASCII
 
