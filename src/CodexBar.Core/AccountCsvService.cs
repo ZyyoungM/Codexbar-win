@@ -89,7 +89,7 @@ public sealed class AccountCsvService
                 tokens?.AccessToken ?? "",
                 tokens?.RefreshToken ?? "",
                 tokens?.IdToken ?? "",
-                tokens?.AccountId ?? "",
+                account.OpenAiAccountId ?? tokens?.AccountId ?? "",
                 tokens?.LastRefresh.ToString("O", CultureInfo.InvariantCulture) ?? ""));
         }
     }
@@ -180,6 +180,7 @@ public sealed class AccountCsvService
                 Label = FirstNonEmpty(Get(index, values, "account_label"), existingAccount?.Label, accountId)!,
                 Email = FirstNonEmpty(Get(index, values, "email"), existingAccount?.Email),
                 SubjectId = FirstNonEmpty(Get(index, values, "subject_id"), existingAccount?.SubjectId),
+                OpenAiAccountId = FirstNonEmpty(Get(index, values, "oauth_account_id"), existingAccount?.OpenAiAccountId),
                 CredentialRef = credentialRef,
                 Status = status,
                 CreatedAt = existingAccount?.CreatedAt ?? DateTimeOffset.UtcNow,

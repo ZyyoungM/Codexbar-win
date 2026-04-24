@@ -539,17 +539,18 @@ public sealed class FrontendBackendService
         CancellationToken cancellationToken = default)
     {
         var identity = OAuthIdentityExtractor.Extract(tokens);
-        var accountId = tokens.AccountId ?? identity.SubjectId ?? identity.Email ?? Guid.NewGuid().ToString("N");
         var displayLabel = string.IsNullOrWhiteSpace(label) || string.Equals(label, "OpenAI", StringComparison.OrdinalIgnoreCase)
             ? identity.BestDisplayName(label)
             : label.Trim();
-        var credentialRef = $"oauth:openai:{accountId}";
-        await _secretStore.WriteTokensAsync(credentialRef, tokens, cancellationToken);
 
         var config = await _appConfigStore.LoadAsync(cancellationToken);
+        config = await BackfillOAuthIdentitiesAsync(config, cancellationToken);
+        var accountId = OpenAiOAuthAccountKey.ResolveAccountId(config, tokens, identity);
         var existingAccount = config.Accounts.FirstOrDefault(account =>
             string.Equals(account.ProviderId, "openai", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(account.AccountId, accountId, StringComparison.OrdinalIgnoreCase));
+        var credentialRef = existingAccount?.CredentialRef ?? $"oauth:openai:{accountId}";
+        await _secretStore.WriteTokensAsync(credentialRef, tokens, cancellationToken);
 
         config = config with
         {
@@ -570,8 +571,9 @@ public sealed class FrontendBackendService
                 ProviderId = "openai",
                 AccountId = accountId,
                 Label = displayLabel,
-                Email = identity.Email,
-                SubjectId = identity.SubjectId,
+                Email = identity.Email ?? existingAccount?.Email,
+                SubjectId = identity.SubjectId ?? existingAccount?.SubjectId,
+                OpenAiAccountId = OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens) ?? existingAccount?.OpenAiAccountId,
                 CredentialRef = credentialRef,
                 Status = AccountStatus.Active,
                 CreatedAt = existingAccount?.CreatedAt ?? DateTimeOffset.UtcNow,
@@ -664,7 +666,8 @@ public sealed class FrontendBackendService
             {
                 Label = label,
                 Email = account.Email ?? identity.Email,
-                SubjectId = account.SubjectId ?? identity.SubjectId
+                SubjectId = account.SubjectId ?? identity.SubjectId,
+                OpenAiAccountId = account.OpenAiAccountId ?? OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens)
             };
             changed |= updated != account;
             accounts.Add(updated);

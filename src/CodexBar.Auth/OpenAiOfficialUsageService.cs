@@ -175,6 +175,7 @@ public sealed class OpenAiOfficialUsageService
                 WeeklyQuota = snapshot.WeeklyQuota,
                 OfficialUsageFetchedAt = fetchedAt,
                 OfficialUsageError = null,
+                OpenAiAccountId = account.OpenAiAccountId ?? OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens),
                 Status = account.Status == AccountStatus.NeedsReauth ? AccountStatus.Active : account.Status
             };
         }
@@ -184,6 +185,7 @@ public sealed class OpenAiOfficialUsageService
             {
                 OfficialUsageFetchedAt = fetchedAt,
                 OfficialUsageError = "Official quota fetch was unauthorized. Re-auth may be required.",
+                OpenAiAccountId = account.OpenAiAccountId ?? (tokens is null ? null : OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens)),
                 Status = AccountStatus.NeedsReauth
             };
         }
@@ -192,6 +194,7 @@ public sealed class OpenAiOfficialUsageService
             return account with
             {
                 OfficialUsageFetchedAt = fetchedAt,
+                OpenAiAccountId = account.OpenAiAccountId ?? (tokens is null ? null : OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens)),
                 OfficialUsageError = $"Official quota fetch failed: {SanitizeError(ex.Message)}"
             };
         }

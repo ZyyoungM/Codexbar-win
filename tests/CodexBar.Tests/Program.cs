@@ -31,6 +31,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("oauth activation writes codex-compatible last_refresh", OAuthActivationWritesLastRefreshTest),
     ("transaction rolls back on validation failure", RollbackTest),
     ("manual callback parser accepts URL and code", ManualCallbackParserTest),
+    ("openai oauth account key avoids shared account id collisions", OpenAiOAuthAccountKeyAvoidsSharedAccountIdCollisionTest),
+    ("openai oauth account key reuses matching legacy records", OpenAiOAuthAccountKeyReusesMatchingLegacyRecordTest),
+    ("openai oauth account key treats subject fallback as account id", OpenAiOAuthAccountKeyTreatsSubjectFallbackAsAccountIdTest),
     ("trusted frontend cors only allows known loopback origins", ApiRegressionTests.TrustedFrontendCorsTest),
     ("oauth manual fallback prefers current input over captured tokens", ApiRegressionTests.OAuthManualFallbackUsesCurrentInputTest),
     ("oauth save success resets captured state for the next login attempt", ApiRegressionTests.OAuthSuccessfulSaveResetsAttemptStateTest),
@@ -152,7 +155,11 @@ static async Task SingleInstanceForwardingTest()
         FileName = Environment.ProcessPath ?? throw new InvalidOperationException("Missing host process path."),
         UseShellExecute = false
     };
-    helper.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
+    if (string.Equals(Path.GetFileName(helper.FileName), "dotnet.exe", StringComparison.OrdinalIgnoreCase))
+    {
+        helper.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
+    }
+
     helper.ArgumentList.Add("__single-instance-forward__");
     helper.ArgumentList.Add(name);
     helper.ArgumentList.Add("--settings");
@@ -1360,6 +1367,96 @@ static async Task AppConfigManualOrderTest()
 
     var loaded = await store.LoadAsync();
     AssertEqual(7, loaded.Accounts.Single().ManualOrder);
+}
+
+static Task OpenAiOAuthAccountKeyAvoidsSharedAccountIdCollisionTest()
+{
+    var config = new AppConfig
+    {
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "acct-shared",
+                Label = "First",
+                SubjectId = "sub-one",
+                CredentialRef = "oauth:openai:acct-shared"
+            }
+        ]
+    };
+
+    var accountId = OpenAiOAuthAccountKey.ResolveAccountId(
+        config,
+        new OAuthTokens
+        {
+            AccessToken = "second-access",
+            AccountId = "acct-shared"
+        },
+        new OAuthIdentity("sub-two", "two@example.test", null));
+
+    AssertTrue(!string.Equals("acct-shared", accountId, StringComparison.Ordinal));
+    AssertTrue(accountId.StartsWith("oauth-", StringComparison.Ordinal));
+    return Task.CompletedTask;
+}
+
+static Task OpenAiOAuthAccountKeyReusesMatchingLegacyRecordTest()
+{
+    var config = new AppConfig
+    {
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "acct-shared",
+                Label = "First",
+                SubjectId = "sub-one",
+                CredentialRef = "oauth:openai:acct-shared"
+            }
+        ]
+    };
+
+    var accountId = OpenAiOAuthAccountKey.ResolveAccountId(
+        config,
+        new OAuthTokens
+        {
+            AccessToken = "first-access",
+            AccountId = "acct-shared"
+        },
+        new OAuthIdentity("sub-one", "one@example.test", null));
+
+    AssertEqual("acct-shared", accountId);
+    return Task.CompletedTask;
+}
+
+static Task OpenAiOAuthAccountKeyTreatsSubjectFallbackAsAccountIdTest()
+{
+    var config = new AppConfig
+    {
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "acct-only",
+                Label = "Fallback",
+                CredentialRef = "oauth:openai:acct-only"
+            }
+        ]
+    };
+
+    var accountId = OpenAiOAuthAccountKey.ResolveAccountId(
+        config,
+        new OAuthTokens
+        {
+            AccessToken = "fallback-access",
+            AccountId = "acct-only"
+        },
+        new OAuthIdentity("acct-only", null, null));
+
+    AssertEqual("acct-only", accountId);
+    return Task.CompletedTask;
 }
 
 static async Task AppConfigRestartConfirmationSuppressionTest()

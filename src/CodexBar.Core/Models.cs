@@ -75,6 +75,7 @@ public sealed record AccountRecord
     public required string Label { get; init; }
     public string? Email { get; init; }
     public string? SubjectId { get; init; }
+    public string? OpenAiAccountId { get; init; }
     public AccountTier Tier { get; init; } = AccountTier.Unknown;
     public string? OfficialPlanTypeRaw { get; init; }
     public QuotaUsageSnapshot FiveHourQuota { get; init; } = new();

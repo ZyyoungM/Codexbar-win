@@ -1,5 +1,12 @@
 # 更新日志
 
+## v0.3.2
+
+- 修复 OpenAI OAuth 多账号保存时可能互相覆盖的问题：本地账号主键现在会结合登录身份与 OpenAI account id 派生，避免多个登录身份共享同一 `account_id` 时被 `upsert` 覆盖。
+- 保存、回填、额度刷新和账号 CSV 导入 / 导出现在都会保留 OpenAI account id 元数据，兼容既有账号记录并避免拆分 shared `.codex` 历史池。
+- 刷新 Windows 程序图标与图标预览资源，作为 v0.3.2 的视觉设计更新一起发布。
+- 修复测试 helper 在 Windows apphost 下递归启动完整测试集的问题，确保 single-instance 转发测试稳定运行。
+
 ## v0.3.1
 
 - 修复便携包通过主浮窗启动 Codex Desktop 后闪退的问题：便携包启动脚本从 `dotnet.exe CodexBar.Win.dll` 改为直接启动 `CodexBar.Win.exe`

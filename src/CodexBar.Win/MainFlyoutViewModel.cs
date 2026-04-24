@@ -664,15 +664,17 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         using var _ = EnterBusy();
         ActivityText = "\u6B63\u5728\u4FDD\u5B58 OpenAI \u8D26\u53F7...";
         var identity = OAuthIdentityExtractor.Extract(tokens);
-        var accountId = tokens.AccountId ?? identity.SubjectId ?? identity.Email ?? Guid.NewGuid().ToString("N");
         var displayLabel = string.IsNullOrWhiteSpace(label) || string.Equals(label, "OpenAI", StringComparison.OrdinalIgnoreCase)
             ? identity.BestDisplayName(label)
             : label;
-        var credentialRef = $"oauth:openai:{accountId}";
-        await _secretStore.WriteTokensAsync(credentialRef, tokens);
 
         _config = await _appConfigStore.LoadAsync();
+        _config = await BackfillOAuthIdentitiesAsync(_config);
+        var accountId = OpenAiOAuthAccountKey.ResolveAccountId(_config, tokens, identity);
         var existingAccount = _config.Accounts.FirstOrDefault(a => a.ProviderId == "openai" && a.AccountId == accountId);
+        var credentialRef = existingAccount?.CredentialRef ?? $"oauth:openai:{accountId}";
+        await _secretStore.WriteTokensAsync(credentialRef, tokens);
+
         _config = _config with
         {
             Providers = Upsert(_config.Providers, p => p.ProviderId == "openai", new ProviderDefinition
@@ -689,8 +691,9 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 ProviderId = "openai",
                 AccountId = accountId,
                 Label = displayLabel,
-                Email = identity.Email,
-                SubjectId = identity.SubjectId,
+                Email = identity.Email ?? existingAccount?.Email,
+                SubjectId = identity.SubjectId ?? existingAccount?.SubjectId,
+                OpenAiAccountId = OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens) ?? existingAccount?.OpenAiAccountId,
                 CredentialRef = credentialRef,
                 Status = AccountStatus.Active,
                 CreatedAt = existingAccount?.CreatedAt ?? DateTimeOffset.UtcNow,
@@ -964,7 +967,8 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
             {
                 Label = label,
                 Email = account.Email ?? identity.Email,
-                SubjectId = account.SubjectId ?? identity.SubjectId
+                SubjectId = account.SubjectId ?? identity.SubjectId,
+                OpenAiAccountId = account.OpenAiAccountId ?? OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens)
             };
             changed |= updated != account;
             accounts.Add(updated);

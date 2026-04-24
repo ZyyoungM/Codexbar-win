@@ -180,6 +180,7 @@ Enable aggregate mode in app config:
 
 ### 2026-04-24
 
+- Bumped project version metadata to `0.3.2`, documented the OpenAI OAuth multi-account overwrite fix, and folded the refreshed Windows app icon into the v0.3.2 release notes.
 - Bumped project version metadata to `0.3.1` and aligned README / CHANGELOG / portable package naming around `CodexBar-portable-win-x64-v0.3.1`.
 - Fixed the portable-package Codex Desktop launch path by switching the package entry scripts to `CodexBar.Win.exe` instead of `dotnet.exe CodexBar.Win.dll`.
 - Expanded desktop launch environment sanitization to remove inherited `.NET` runtime variables before starting Codex Desktop from the portable build.
