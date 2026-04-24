@@ -4,11 +4,17 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>Assets\CodexBar.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\CodexBar.Core\CodexBar.Core.csproj" />
     <ProjectReference Include="..\CodexBar.CodexCompat\CodexBar.CodexCompat.csproj" />
     <ProjectReference Include="..\CodexBar.Auth\CodexBar.Auth.csproj" />
     <ProjectReference Include="..\CodexBar.Runtime\CodexBar.Runtime.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Assets\CodexBar.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>

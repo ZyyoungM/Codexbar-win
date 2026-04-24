@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Media;
 using CodexBar.Core;
 using CodexBar.Runtime;
+using System.IO;
 using Drawing = System.Drawing;
 using Drawing2D = System.Drawing.Drawing2D;
 using Forms = System.Windows.Forms;
@@ -14,6 +15,7 @@ public partial class App : System.Windows.Application
     private readonly AppConfigStore _configStore;
     private readonly MainFlyoutViewModel _flyoutViewModel = new();
     private Forms.NotifyIcon? _notifyIcon;
+    private Drawing.Icon? _trayIcon;
     private FlyoutWindow? _flyoutWindow;
     private OverlayWindow? _overlayWindow;
     private SettingsWindow? _settingsWindow;
@@ -68,9 +70,10 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        _trayIcon = TryLoadAppIcon();
         _notifyIcon = new Forms.NotifyIcon
         {
-            Icon = Drawing.SystemIcons.Application,
+            Icon = _trayIcon ?? Drawing.SystemIcons.Application,
             Visible = true,
             Text = "CodexBar"
         };
@@ -90,6 +93,7 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         _notifyIcon?.Dispose();
+        _trayIcon?.Dispose();
         _singleInstance?.Dispose();
         _trayMenuFont.Dispose();
         _trayMenuBoldFont.Dispose();
@@ -141,6 +145,25 @@ public partial class App : System.Windows.Application
         menu.Items.Add(CreateMenuItem("\u9000\u51FA", (_, _) => Shutdown()));
         UpdateContextMenuState();
         return menu;
+    }
+
+    private Drawing.Icon? TryLoadAppIcon()
+    {
+        try
+        {
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "CodexBar.ico");
+            if (!File.Exists(iconPath))
+            {
+                return null;
+            }
+
+            return new Drawing.Icon(iconPath);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warning("app.load_icon_failed", new { message = ex.Message });
+            return null;
+        }
     }
 
     private Forms.ToolStripMenuItem CreateMenuItem(
