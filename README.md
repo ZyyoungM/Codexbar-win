@@ -3,7 +3,7 @@
 
 # CodexBar for Windows
 
-当前版本：`v0.3.2`
+当前版本：`v0.3.3`
 
 CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/lizhelang/codexbar) 的 Windows 原生移植版。它的目标不是重做 Codex，而是在 Windows 上提供一个更顺手的账号与 Provider 切换入口，让你在**不拆分本地 `.codex` 历史池**的前提下管理 OpenAI 官方账号和第三方兼容接口。
 
@@ -22,22 +22,22 @@ CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/
 
 CodexBar for Windows 的日常交互主要围绕两类界面展开：
 
-- **主浮窗**：集中承载账号 / Provider 管理、启动 Codex、查看当前激活对象与进入设置，是完整的高频操作入口。
+- **主浮窗**：集中承载账号 / Provider 管理、启动 Codex、查看当前激活对象与进入设置，是完整的高频操作入口；账号列表支持标准卡片和紧凑卡片两种视图，紧凑视图适合账号较多时提升同屏可见数量。
 - **小浮窗**：作为轻量常驻视图，适合快速确认当前激活的 Provider、usage 摘要和最近刷新状态；展开后还能继续查看更细的 usage 明细与当前模式。
 
-| 主浮窗 | 小浮窗（默认） | 小浮窗（展开） |
-| --- | --- | --- |
-| ![主浮窗界面](docs/images/preview-main-window.png) | ![小浮窗默认视图](docs/images/preview-mini-window-collapsed.png) | ![小浮窗展开视图](docs/images/preview-mini-window-expanded.png) |
+| 主浮窗（标准卡片） | 主浮窗（紧凑卡片） | 小浮窗（默认） | 小浮窗（展开） |
+| --- | --- | --- | --- |
+| ![主浮窗标准卡片视图](docs/images/preview-main-window.png) | ![主浮窗紧凑卡片视图](docs/images/preview-main-window-compact.png) | ![小浮窗默认视图](docs/images/preview-mini-window-collapsed.png) | ![小浮窗展开视图](docs/images/preview-mini-window-expanded.png) |
 
 ## 快速开始
 
 ### 方式一：推荐使用便携包（下载后即用）
 
-如果你只是想直接使用 CodexBar，推荐优先使用便携包，直接去 release 下载 `CodexBar-portable-win-x64-v0.3.2.zip`。
+如果你只是想直接使用 CodexBar，推荐优先使用便携包，直接去 release 下载 `CodexBar-portable-win-x64-v0.3.3.zip`。
 
 拿到压缩包后，按下面 3 步即可开始使用：
 
-1. 解压 `CodexBar-portable-win-x64-v0.3.2.zip`
+1. 解压 `CodexBar-portable-win-x64-v0.3.3.zip`
 2. 进入解压后的目录
 3. 双击 `start-codexbar.cmd`
 
@@ -181,6 +181,13 @@ dotnet run --project .\src\CodexBar.Cli\CodexBar.Cli.csproj -- import-history --
 ## 版本更新摘要
 
 `README.md` 只保留相对上个版本的简要说明，详细变更请看 [CHANGELOG.md](./CHANGELOG.md)。
+
+### v0.3.3 - 2026-04-25
+
+- 主浮窗顶部操作区收敛为一行工具栏，并新增可持久化的标准 / 紧凑账号卡片视图
+- 紧凑卡片压缩官方额度为 `5h@...` / `周@...` 内联行，标准卡片和当前激活卡片保留原有布局
+- Settings 保存后立即关闭并刷新主浮窗配置；托盘“快速选择账号/API”改为子菜单以避免文本截断
+- 小浮窗额度标签显示实际刷新时间并提供 tooltip
 
 ### v0.3.2 - 2026-04-24
 

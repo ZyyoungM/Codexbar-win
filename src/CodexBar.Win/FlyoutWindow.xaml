@@ -84,6 +84,22 @@
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
 
+    <Style x:Key="ToolbarIconButton" TargetType="Button" BasedOn="{StaticResource BaseActionButton}">
+      <Setter Property="Height" Value="34" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0,0,6,0" />
+      <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+
+    <Style x:Key="ToolbarPrimaryIconButton" TargetType="Button" BasedOn="{StaticResource ToolbarIconButton}">
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Background" Value="#0067C0" />
+      <Setter Property="BorderBrush" Value="#0067C0" />
+    </Style>
+
     <Style x:Key="MiniSecondaryButton" TargetType="Button" BasedOn="{StaticResource BaseActionButton}">
       <Setter Property="Height" Value="26" />
       <Setter Property="MinWidth" Value="54" />
@@ -108,14 +124,14 @@
     </Style>
 
     <Style x:Key="IconActionButton" TargetType="Button">
-      <Setter Property="Width" Value="20" />
-      <Setter Property="Height" Value="20" />
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
       <Setter Property="Margin" Value="4,0,0,0" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Foreground" Value="#605E5C" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
-      <Setter Property="FontSize" Value="9" />
+      <Setter Property="FontSize" Value="10" />
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="Template">
         <Setter.Value>
@@ -140,8 +156,9 @@
     </Style>
 
     <Style x:Key="RoutingSegmentButtonBase" TargetType="Button">
-      <Setter Property="Height" Value="28" />
-      <Setter Property="Padding" Value="9,0" />
+      <Setter Property="Height" Value="30" />
+      <Setter Property="MinWidth" Value="42" />
+      <Setter Property="Padding" Value="8,0" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="#605E5C" />
@@ -191,6 +208,10 @@
       <Setter Property="Margin" Value="0,0,0,9" />
       <Setter Property="BorderBrush" Value="#11000000" />
       <Style.Triggers>
+        <DataTrigger Binding="{Binding DataContext.IsCompactCardDensity, RelativeSource={RelativeSource AncestorType=ListBox}}" Value="True">
+          <Setter Property="Padding" Value="7" />
+          <Setter Property="Margin" Value="0,0,0,6" />
+        </DataTrigger>
         <DataTrigger Binding="{Binding IsActive}" Value="True">
           <Setter Property="BorderBrush" Value="#0067C0" />
           <Setter Property="Background" Value="#FAFBFE" />
@@ -226,105 +247,71 @@
         <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
 
-      <Grid Grid.Row="0" Margin="0,0,0,12">
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+      <Grid Grid.Row="0" Margin="0,0,0,8">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*" />
-          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
-        <Button Grid.Row="0"
-                Grid.Column="0"
-                Margin="0,0,8,8"
-                Content="添加 OpenAI 授权"
-                Style="{StaticResource TopPrimaryActionButton}"
-                Click="OAuth_Click" />
-        <Button Grid.Row="0"
-                Grid.Column="1"
-                Margin="0,0,0,8"
-                Content="添加兼容 Provider"
-                Style="{StaticResource TopSecondaryActionButton}"
-                Click="AddCompatible_Click" />
-        <Button Grid.Row="1"
-                Grid.Column="0"
-                Margin="0,0,8,0"
-                Content="刷新额度/API"
-                Style="{StaticResource TopSecondaryActionButton}"
-                Click="ProbeAll_Click" />
-        <Button Grid.Row="1"
-                Grid.Column="1"
-                Content="设置"
-                Style="{StaticResource TopSecondaryActionButton}"
-                Click="Settings_Click" />
-      </Grid>
+        <UniformGrid Columns="6"
+                     Margin="0,0,6,0"
+                     VerticalAlignment="Center">
+          <Button Content="&#xE8D4;"
+                  Style="{StaticResource ToolbarPrimaryIconButton}"
+                  ToolTip="添加 OpenAI 授权"
+                  Click="OAuth_Click" />
+          <Button Content="&#xE710;"
+                  Style="{StaticResource ToolbarIconButton}"
+                  ToolTip="添加兼容 Provider"
+                  Click="AddCompatible_Click" />
+          <Button Content="&#xE72C;"
+                  Style="{StaticResource ToolbarIconButton}"
+                  ToolTip="刷新状态 / 额度 / API"
+                  Click="ProbeAll_Click" />
+          <Button Content="&#xE768;"
+                  Style="{StaticResource ToolbarPrimaryIconButton}"
+                  ToolTip="启动 Codex"
+                  IsEnabled="{Binding HasActiveAccount}"
+                  Click="ActiveLaunch_Click" />
+          <Button Content="&#xE7F4;"
+                  Style="{StaticResource ToolbarIconButton}"
+                  ToolTip="显示小浮窗"
+                  Click="Overlay_Click" />
+          <Button Content="&#xE713;"
+                  Style="{StaticResource ToolbarIconButton}"
+                  ToolTip="打开设置"
+                  Click="Settings_Click" />
+        </UniformGrid>
 
-      <StackPanel Grid.Row="1" Margin="0,0,0,12">
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-          <TextBlock Text="Provider 路由模式"
-                     Foreground="#605E5C"
-                     FontSize="11"
-                     VerticalAlignment="Center" />
-          <Border Margin="10,0,0,0"
-                  Padding="7,2"
-                  Background="#E7F1FB"
-                  CornerRadius="8">
-            <TextBlock Text="{Binding RoutingModeBadgeText}"
-                       Foreground="#0067C0"
-                       FontSize="10"
-                       FontWeight="SemiBold" />
-          </Border>
-        </StackPanel>
-
-        <Border Margin="0,10,0,0"
+        <Border Grid.Column="1"
                 Padding="2"
                 Background="#EFEFEF"
                 CornerRadius="8"
-                IsEnabled="{Binding CanInteract}">
+                IsEnabled="{Binding CanInteract}"
+                ToolTip="{Binding RoutingDescriptionText}">
           <UniformGrid Columns="2">
-            <Button Content="手动切换"
+            <Button Content="手动"
+                    ToolTip="手动切换"
                     Style="{StaticResource ManualRoutingButtonStyle}"
                     Click="ManualRouting_Click" />
-            <Button Content="自动切换"
+            <Button Content="自动"
+                    ToolTip="自动选择"
                     Style="{StaticResource AutomaticRoutingButtonStyle}"
                     Click="AutomaticRouting_Click" />
           </UniformGrid>
         </Border>
-
-        <TextBlock Margin="0,8,0,0"
-                   Text="{Binding RoutingDescriptionText}"
-                   Foreground="#605E5C"
-                   FontSize="11"
-                   TextWrapping="Wrap" />
-      </StackPanel>
+      </Grid>
 
       <Border Grid.Row="2"
               Margin="0,0,0,12"
               Style="{StaticResource SectionCard}">
         <StackPanel>
-          <Grid Margin="0,0,0,8">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <TextBlock Text="当前激活"
-                       Foreground="#605E5C"
-                       FontSize="11"
-                       FontWeight="SemiBold"
-                       VerticalAlignment="Center" />
-
-            <Button Grid.Column="1"
-                    Width="84"
-                    Content="启动 Codex"
-                    Style="{StaticResource MiniPrimaryButton}"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Center"
-                    IsEnabled="{Binding HasActiveAccount}"
-                    Click="ActiveLaunch_Click" />
-          </Grid>
+          <TextBlock Text="当前激活"
+                     Margin="0,0,0,8"
+                     Foreground="#605E5C"
+                     FontSize="11"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center" />
 
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
             <TextBlock Text="{Binding ActiveAccount.Title}"
@@ -555,7 +542,18 @@
                   </UniformGrid>
                 </Border>
 
-                <StackPanel Grid.Column="1">
+                <StackPanel x:Name="StandardCardContent"
+                            Grid.Column="1">
+                  <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                      <Setter Property="Visibility" Value="Visible" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding DataContext.IsCompactCardDensity, RelativeSource={RelativeSource AncestorType=ListBox}}" Value="True">
+                          <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </StackPanel.Style>
                   <WrapPanel>
                     <TextBlock Text="{Binding Name}"
                                Margin="0,0,8,4"
@@ -614,9 +612,68 @@
                              TextTrimming="CharacterEllipsis" />
                 </StackPanel>
 
-                <StackPanel Grid.Column="2"
+                <Grid x:Name="CompactCardContent"
+                      Grid.Column="1"
+                      VerticalAlignment="Center">
+                  <Grid.Style>
+                    <Style TargetType="Grid">
+                      <Setter Property="Visibility" Value="Collapsed" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding DataContext.IsCompactCardDensity, RelativeSource={RelativeSource AncestorType=ListBox}}" Value="True">
+                          <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Grid.Style>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+
+                  <TextBlock Text="{Binding Name}"
+                             ToolTip="{Binding Name}"
+                             Foreground="#1C1C1C"
+                             FontSize="11"
+                             FontWeight="SemiBold"
+                             TextTrimming="CharacterEllipsis"
+                             TextWrapping="NoWrap"
+                             VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding CompactMetaText}"
+                             ToolTip="{Binding CompactMetaText}"
+                             Margin="8,0,0,0"
+                             MaxWidth="92"
+                             Foreground="#605E5C"
+                             FontSize="9"
+                             FontWeight="SemiBold"
+                             TextTrimming="CharacterEllipsis"
+                             TextWrapping="NoWrap"
+                             VerticalAlignment="Center"
+                             Visibility="{Binding HasCompactMetaText, Converter={StaticResource BoolToVisibility}}" />
+                  <Ellipse Grid.Column="2"
+                           Width="8"
+                           Height="8"
+                           Margin="8,0,0,0"
+                           VerticalAlignment="Center"
+                           Fill="{Binding StatusBrush}"
+                           ToolTip="{Binding StatusText}" />
+                </Grid>
+
+                <StackPanel x:Name="StandardActionButtons"
+                            Grid.Column="2"
                             Orientation="Horizontal"
                             VerticalAlignment="Top">
+                  <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                      <Setter Property="Visibility" Value="Visible" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding DataContext.IsCompactCardDensity, RelativeSource={RelativeSource AncestorType=ListBox}}" Value="True">
+                          <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </StackPanel.Style>
                   <Button Content="切换"
                           Style="{StaticResource MiniSecondaryButton}"
                           Visibility="{Binding CanActivate, Converter={StaticResource BoolToVisibility}}"
@@ -645,11 +702,68 @@
                           Click="DeleteAccount_Click" />
                 </StackPanel>
 
-                <StackPanel Grid.Row="2"
+                <StackPanel x:Name="CompactActionButtons"
+                            Grid.Column="2"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                  <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                      <Setter Property="Visibility" Value="Collapsed" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding DataContext.IsCompactCardDensity, RelativeSource={RelativeSource AncestorType=ListBox}}" Value="True">
+                          <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </StackPanel.Style>
+                  <Button Content="&#xE8AB;"
+                          Style="{StaticResource IconActionButton}"
+                          Visibility="{Binding CanActivate, Converter={StaticResource BoolToVisibility}}"
+                          ToolTip="切换账号"
+                          Click="UseAccount_Click" />
+                  <Button Content="&#xE768;"
+                          Style="{StaticResource IconActionButton}"
+                          Visibility="{Binding CanLaunch, Converter={StaticResource BoolToVisibility}}"
+                          ToolTip="启动 Codex"
+                          Click="LaunchAccount_Click" />
+                  <Button Content="&#xE72C;"
+                          Style="{StaticResource IconActionButton}"
+                          Visibility="{Binding CanRefreshOfficialQuota, Converter={StaticResource BoolToVisibility}}"
+                          ToolTip="刷新官方额度"
+                          Click="RefreshOfficialQuota_Click" />
+                  <Button Content="&#xE783;"
+                          Style="{StaticResource IconActionButton}"
+                          Visibility="{Binding CanProbe, Converter={StaticResource BoolToVisibility}}"
+                          ToolTip="探测 API"
+                          Click="ProbeAccount_Click" />
+                  <Button Content="&#xE70F;"
+                          Style="{StaticResource IconActionButton}"
+                          ToolTip="编辑账号"
+                          Click="EditAccount_Click" />
+                  <Button Content="&#xE74D;"
+                          Style="{StaticResource IconActionButton}"
+                          ToolTip="删除账号"
+                          Click="DeleteAccount_Click" />
+                </StackPanel>
+
+                <StackPanel x:Name="StandardQuotaRows"
+                            Grid.Row="2"
                             Grid.Column="1"
                             Grid.ColumnSpan="2"
-                            Margin="0,12,0,0"
-                            Visibility="{Binding ShowQuotaBars, Converter={StaticResource BoolToVisibility}}">
+                            Margin="0,12,0,0">
+                  <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                      <Setter Property="Visibility" Value="Collapsed" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowQuotaBars}" Value="True">
+                          <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding DataContext.IsCompactCardDensity, RelativeSource={RelativeSource AncestorType=ListBox}}" Value="True">
+                          <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </StackPanel.Style>
                   <Grid Margin="0,0,0,6">
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="*" />
@@ -703,11 +817,101 @@
                   </Grid>
                 </StackPanel>
 
+                <StackPanel x:Name="CompactQuotaRows"
+                            Grid.Row="2"
+                            Grid.Column="1"
+                            Grid.ColumnSpan="2"
+                            Margin="0,7,0,0">
+                  <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                      <Setter Property="Visibility" Value="Collapsed" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowQuotaBars}" Value="True">
+                          <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding DataContext.IsCompactCardDensity, RelativeSource={RelativeSource AncestorType=ListBox}}" Value="False">
+                          <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </StackPanel.Style>
+                  <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="58" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="62" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding FiveHourQuotaInlineLabel}"
+                               Foreground="#605E5C"
+                               FontSize="8.5" />
+                    <Grid Grid.Column="1"
+                          Height="5"
+                          Margin="7,0"
+                          VerticalAlignment="Center">
+                      <Border Background="#E9E9E9" CornerRadius="3" />
+                      <Border Background="{Binding FiveHourProgressBrush}"
+                              CornerRadius="3"
+                              HorizontalAlignment="Stretch"
+                              RenderTransformOrigin="0,0.5">
+                        <Border.RenderTransform>
+                          <ScaleTransform ScaleX="{Binding FiveHourUsedRatio}" />
+                        </Border.RenderTransform>
+                      </Border>
+                    </Grid>
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding FiveHourAvailableText}"
+                               Foreground="{Binding FiveHourProgressBrush}"
+                               FontSize="8.5"
+                               FontWeight="SemiBold" />
+                  </Grid>
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="58" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="62" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding WeeklyQuotaInlineLabel}"
+                               Foreground="#605E5C"
+                               FontSize="8.5" />
+                    <Grid Grid.Column="1"
+                          Height="5"
+                          Margin="7,0"
+                          VerticalAlignment="Center">
+                      <Border Background="#E9E9E9" CornerRadius="3" />
+                      <Border Background="{Binding WeeklyProgressBrush}"
+                              CornerRadius="3"
+                              HorizontalAlignment="Stretch"
+                              RenderTransformOrigin="0,0.5">
+                        <Border.RenderTransform>
+                          <ScaleTransform ScaleX="{Binding WeeklyUsedRatio}" />
+                        </Border.RenderTransform>
+                      </Border>
+                    </Grid>
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding WeeklyAvailableText}"
+                               Foreground="{Binding WeeklyProgressBrush}"
+                               FontSize="8.5"
+                               FontWeight="SemiBold" />
+                  </Grid>
+                </StackPanel>
+
                 <Grid Grid.Row="2"
                       Grid.Column="1"
                       Grid.ColumnSpan="2"
-                      Margin="0,12,0,0"
-                      Visibility="{Binding ShowTokenGrid, Converter={StaticResource BoolToVisibility}}">
+                      Margin="0,12,0,0">
+                  <Grid.Style>
+                    <Style TargetType="Grid">
+                      <Setter Property="Visibility" Value="Collapsed" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowTokenGrid}" Value="True">
+                          <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding DataContext.IsCompactCardDensity, RelativeSource={RelativeSource AncestorType=ListBox}}" Value="True">
+                          <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Grid.Style>
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
@@ -755,20 +959,6 @@
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>
-
-      <Border Grid.Row="6"
-              Margin="0,12,0,0"
-              Padding="12,9"
-              Background="White"
-              BorderBrush="#11000000"
-              BorderThickness="1"
-              CornerRadius="8">
-        <TextBlock Text="{Binding FootnoteText}"
-                   Foreground="#605E5C"
-                   FontSize="10"
-                   TextWrapping="Wrap"
-                   TextAlignment="Center" />
-      </Border>
 
       <Canvas x:Name="DragPreviewLayer"
               Grid.RowSpan="7"

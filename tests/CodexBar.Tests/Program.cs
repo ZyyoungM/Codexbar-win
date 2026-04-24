@@ -66,8 +66,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("app config persists manual account order", AppConfigManualOrderTest),
     ("app config persists overlay startup preference", AppConfigOverlayStartupPreferenceTest),
     ("app config persists restart confirmation suppression", AppConfigRestartConfirmationSuppressionTest),
+    ("app config persists account card density preference", AppConfigAccountCardDensityPreferenceTest),
     ("quota formatter shows remaining quota and 5h reset time as hh:mm", QuotaFormatterFiveHourResetTest),
     ("quota formatter shows weekly reset as date unless within 24h", QuotaFormatterWeeklyResetTest),
+    ("quota formatter supports inline flyout labels", QuotaFormatterInlineLabelTest),
     ("official OpenAI usage refresh maps plan and quota windows", OfficialOpenAiUsageRefreshTest),
     ("official OpenAI usage refresh marks unauthorized accounts for reauth", OfficialOpenAiUsageUnauthorizedTest),
     ("session archive exports and imports shared history only", SessionArchiveExportImportTest),
@@ -1491,6 +1493,22 @@ static async Task AppConfigOverlayStartupPreferenceTest()
     AssertTrue(loaded.Settings.OpenOverlayOnStartup);
 }
 
+static async Task AppConfigAccountCardDensityPreferenceTest()
+{
+    using var temp = TempDir.Create();
+    var store = new AppConfigStore(Path.Combine(temp.Path, "config.json"));
+    await store.SaveAsync(new AppConfig
+    {
+        Settings = new AppSettings
+        {
+            AccountCardDensity = AccountCardDensity.Compact
+        }
+    });
+
+    var loaded = await store.LoadAsync();
+    AssertEqual(AccountCardDensity.Compact, loaded.Settings.AccountCardDensity);
+}
+
 static Task QuotaFormatterFiveHourResetTest()
 {
     var now = new DateTimeOffset(2026, 4, 16, 9, 0, 0, TimeSpan.FromHours(8));
@@ -1536,6 +1554,35 @@ static Task QuotaFormatterWeeklyResetTest()
     AssertEqual("week 剩余 40% · 下次 20:30", near);
     AssertEqual("周额度 刷新于 04-20", farLabel);
     AssertEqual("周额度 刷新于 20:30", nearLabel);
+    return Task.CompletedTask;
+}
+
+static Task QuotaFormatterInlineLabelTest()
+{
+    var now = new DateTimeOffset(2026, 4, 16, 9, 0, 0, TimeSpan.FromHours(8));
+    var fiveHourSnapshot = new QuotaUsageSnapshot
+    {
+        Used = 25,
+        Limit = 100,
+        ResetAt = new DateTimeOffset(2026, 4, 16, 13, 45, 0, TimeSpan.FromHours(8))
+    };
+    var farWeeklySnapshot = new QuotaUsageSnapshot
+    {
+        Used = 60,
+        Limit = 100,
+        ResetAt = new DateTimeOffset(2026, 4, 20, 8, 0, 0, TimeSpan.FromHours(8))
+    };
+    var nearWeeklySnapshot = new QuotaUsageSnapshot
+    {
+        Used = 60,
+        Limit = 100,
+        ResetAt = new DateTimeOffset(2026, 4, 16, 20, 30, 0, TimeSpan.FromHours(8))
+    };
+
+    AssertEqual("5h@13:45", OpenAiQuotaDisplayFormatter.FormatInlineQuotaLabel(fiveHourSnapshot, "5h 额度", now));
+    AssertEqual("周@04-20", OpenAiQuotaDisplayFormatter.FormatInlineQuotaLabel(farWeeklySnapshot, "周额度", now));
+    AssertEqual("周@20:30", OpenAiQuotaDisplayFormatter.FormatInlineQuotaLabel(nearWeeklySnapshot, "week", now));
+    AssertEqual("5h@--", OpenAiQuotaDisplayFormatter.FormatInlineQuotaLabel(new QuotaUsageSnapshot(), "5h", now));
     return Task.CompletedTask;
 }
 

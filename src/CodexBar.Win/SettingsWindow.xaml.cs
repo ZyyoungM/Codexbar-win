@@ -26,12 +26,14 @@ public partial class SettingsWindow : Window
     private readonly WindowsCredentialSecretStore _secretStore = new();
     private readonly Func<bool>? _overlayVisibleProvider;
     private readonly Func<bool, Task>? _overlayVisibilityChanged;
+    private readonly Func<Task>? _settingsSaved;
     private AppConfig _config = AppConfigStore.DefaultConfig();
     private bool _suppressOverlayToggle;
 
     public SettingsWindow(
         Func<bool>? overlayVisibleProvider = null,
-        Func<bool, Task>? overlayVisibilityChanged = null)
+        Func<bool, Task>? overlayVisibilityChanged = null,
+        Func<Task>? settingsSaved = null)
     {
         InitializeComponent();
         _appPaths = AppPaths.Resolve();
@@ -39,10 +41,12 @@ public partial class SettingsWindow : Window
         _configStore = new AppConfigStore(_appPaths.ConfigPath);
         _overlayVisibleProvider = overlayVisibleProvider;
         _overlayVisibilityChanged = overlayVisibilityChanged;
+        _settingsSaved = settingsSaved;
 
         AccountSortModeBox.ItemsSource = BuildAccountSortModeOptions();
         ActivationBehaviorBox.ItemsSource = BuildActivationBehaviorOptions();
         OpenAiAccountModeBox.ItemsSource = BuildOpenAiModeOptions();
+        AccountCardDensityBox.ItemsSource = BuildAccountCardDensityOptions();
         SettingsNavList.SelectedIndex = 0;
         ShowSettingsPage("runtime");
         Loaded += async (_, _) => await LoadConfigAsync();
@@ -57,6 +61,7 @@ public partial class SettingsWindow : Window
         SelectOption(AccountSortModeBox, _config.Settings.AccountSortMode);
         SelectOption(ActivationBehaviorBox, _config.Settings.ActivationBehavior);
         SelectOption(OpenAiAccountModeBox, _config.Settings.OpenAiAccountMode);
+        SelectOption(AccountCardDensityBox, _config.Settings.AccountCardDensity);
         CodexDesktopPathBox.Text = _config.Settings.CodexDesktopPath ?? "";
         CodexCliPathBox.Text = _config.Settings.CodexCliPath ?? "";
         StartupBox.IsChecked = _startup.IsEnabled();
@@ -88,6 +93,7 @@ public partial class SettingsWindow : Window
                 AccountSortMode = SelectedValue(AccountSortModeBox, AccountSortMode.Manual),
                 ActivationBehavior = SelectedValue(ActivationBehaviorBox, ActivationBehavior.WriteConfigOnly),
                 OpenAiAccountMode = SelectedValue(OpenAiAccountModeBox, OpenAiAccountMode.ManualSwitch),
+                AccountCardDensity = SelectedValue(AccountCardDensityBox, AccountCardDensity.Standard),
                 OpenOverlayOnStartup = OpenOverlayOnStartupBox.IsChecked == true,
                 CodexDesktopPath = EmptyToNull(CodexDesktopPathBox.Text),
                 CodexCliPath = EmptyToNull(CodexCliPathBox.Text)
@@ -100,6 +106,46 @@ public partial class SettingsWindow : Window
         if (closeAfterSave)
         {
             Close();
+            StartSettingsSavedCallback();
+            return;
+        }
+
+        if (_settingsSaved is not null)
+        {
+            await _settingsSaved();
+        }
+    }
+
+    private void StartSettingsSavedCallback()
+    {
+        if (_settingsSaved is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var refreshTask = _settingsSaved();
+            if (!refreshTask.IsCompletedSuccessfully)
+            {
+                _ = ObserveSettingsSavedAsync(refreshTask);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(DiagnosticLogger.Redact(ex.Message));
+        }
+    }
+
+    private static async Task ObserveSettingsSavedAsync(Task refreshTask)
+    {
+        try
+        {
+            await refreshTask;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(DiagnosticLogger.Redact(ex.Message));
         }
     }
 
@@ -504,6 +550,13 @@ public partial class SettingsWindow : Window
         [
             new(OpenAiAccountMode.ManualSwitch, "\u624B\u52A8\u5207\u6362"),
             new(OpenAiAccountMode.AggregateGateway, "\u81EA\u52A8\u6A21\u5F0F")
+        ];
+
+    private static IReadOnlyList<OptionItem<AccountCardDensity>> BuildAccountCardDensityOptions()
+        =>
+        [
+            new(AccountCardDensity.Standard, "\u6807\u51C6\u5361\u7247"),
+            new(AccountCardDensity.Compact, "\u7D27\u51D1\u5361\u7247")
         ];
 
     private static void SelectOption<T>(System.Windows.Controls.ComboBox comboBox, T value)

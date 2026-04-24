@@ -47,6 +47,12 @@ public enum OpenAiAccountMode
     AggregateGateway
 }
 
+public enum AccountCardDensity
+{
+    Standard,
+    Compact
+}
+
 public enum AccountTier
 {
     Unknown,
@@ -129,6 +135,7 @@ public sealed record AppSettings
     public AccountSortMode AccountSortMode { get; init; } = AccountSortMode.Manual;
     public ActivationBehavior ActivationBehavior { get; init; } = ActivationBehavior.WriteConfigOnly;
     public OpenAiAccountMode OpenAiAccountMode { get; init; } = OpenAiAccountMode.ManualSwitch;
+    public AccountCardDensity AccountCardDensity { get; init; } = AccountCardDensity.Standard;
     public bool OpenOverlayOnStartup { get; init; }
     public bool SuppressRestartConfirmation { get; init; }
     public string? CodexDesktopPath { get; init; }

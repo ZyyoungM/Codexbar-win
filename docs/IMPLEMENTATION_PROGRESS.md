@@ -1,6 +1,6 @@
 # CodexBar Windows Implementation Progress
 
-Last updated: 2026-04-24
+Last updated: 2026-04-25
 
 This file is the project progress ledger. Whenever a feature is added, changed, removed, or meaningfully fixed, update this document in the same change.
 
@@ -47,11 +47,11 @@ The current implementation is a working MVP with a native tray-window model (`Ma
 | Windows Credential Manager | `[x]` | API keys and OAuth tokens are persisted through Credential Manager. |
 | Local usage scanner | `[~]` | Scans `sessions` and `archived_sessions`, exposes Today / Last 7 Days / Last 30 Days / Lifetime totals, attributes sessions by switch intervals, and auto-refreshes every minute while the main flyout is open. Cost pricing is still placeholder. |
 | Locked session file handling | `[x]` | Scanner uses shared read and skips unreadable active files. |
-| Tray host | `[~]` | Tray host now coordinates left-click main flyout, right-click menu actions, direct overlay toggling, and warm-start command handoff. Icon/art and packaging still need work. |
+| Tray host | `[~]` | Tray host now coordinates left-click main flyout, right-click menu actions, direct overlay toggling, and warm-start command handoff. Quick account/API switching is nested under a submenu so long account labels do not clip the top-level menu. Icon/art and packaging still need work. |
 | Native window hierarchy | `[x]` | `CodexBar.Win` now uses an explicit native surface model: tray host, `MainFlyout`, independent `Overlay`, and separate popup windows for Settings / OAuth / Add Compatible / Edit Account. The runtime entry stays native and does not collapse these surfaces into route pages. |
-| Temporary WPF shell | `[x]` | Main flyout and popup windows remain native WPF surfaces for now, with shared state between the main flyout and overlay. UI is still optimized for manual testing rather than final polish. |
+| Temporary WPF shell | `[x]` | Main flyout and popup windows remain native WPF surfaces for now, with shared state between the main flyout and overlay. The main flyout supports standard/compact account card density, Settings saves can refresh the flyout configuration without blocking window close, and the overlay uses bound quota reset labels. UI is still optimized for manual testing rather than final polish. |
 | Figma visual baseline | `[~]` | The current native rebuild follows the imported Figma hierarchy as a visual and interaction reference only. The candidate runtime remains the native WPF shell rather than a browser-style host. |
-| Main flyout action feedback | `[x]` | Refresh / switch / save / delete / launch flows show in-progress and completion/failure feedback. The account list now stays interactive during refresh-oriented operations instead of being blanket-disabled. |
+| Main flyout action feedback | `[x]` | Refresh / switch / save / delete / launch flows show in-progress and completion/failure feedback. The account list now stays interactive during refresh-oriented operations instead of being blanket-disabled, and the top action area is a single tooltip-backed toolbar. |
 | Startup registration | `[~]` | Registry startup toggle exists. Current startup target still depends on development-style executable layout. |
 | Single-instance startup command forwarding | `[x]` | Secondary launches now forward `--open`, `--overlay`, and `--settings` into the running primary instance. `--tray-only` remains a cold-start / startup-registration path. |
 | Codex Desktop / CLI path settings | `[x]` | Config model, CLI, Settings UI, detection, and launch fallback are wired. GUI launch re-syncs active account into `config.toml` / `auth.json` before starting Codex, Desktop launch cleans inherited Codex/Electron internal environment variables, and Desktop detection prefers the newest WindowsApps / MSIX Codex package instead of a stale version-pinned path. |
@@ -65,17 +65,15 @@ The current implementation is a working MVP with a native tray-window model (`Ma
 Latest verified commands:
 
 ```powershell
-.\build.ps1
-.\test.ps1
-git diff --check
+dotnet build CodexBar.Win.sln
+dotnet run --project tests\CodexBar.Tests\CodexBar.Tests.csproj
 ```
 
 Latest known result:
 
 ```text
 build: succeeded
-tests: 39 passed
-diff-check: clean
+tests: 55 passed
 ```
 
 Current automated coverage includes:
@@ -111,8 +109,10 @@ Current automated coverage includes:
 - desktop locator packaged-app autodetection without configured path
 - portable packaging script and zip output
 - manual account order persistence
+- account card density preference persistence
 - manual account reorder complete-payload enforcement
 - remaining-quota display formatting for 5h and weekly windows
+- inline flyout quota label formatting for compact cards
 - official OpenAI quota refresh success mapping
 - official OpenAI quota unauthorized handling
 - compatible-account CSV secret import

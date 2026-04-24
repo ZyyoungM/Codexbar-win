@@ -13,6 +13,18 @@ public static class OpenAiQuotaDisplayFormatter
             : $"{displayLabel} 刷新于 {refreshAt}";
     }
 
+    public static string FormatInlineQuotaLabel(
+        QuotaUsageSnapshot snapshot,
+        string displayLabel,
+        DateTimeOffset? now = null)
+    {
+        var compactLabel = CompactQuotaLabel(displayLabel);
+        var refreshAt = FormatQuotaRefreshAt(snapshot, compactLabel, now);
+        return string.IsNullOrWhiteSpace(refreshAt)
+            ? $"{compactLabel}@--"
+            : $"{compactLabel}@{refreshAt}";
+    }
+
     public static string? FormatCompactRemaining(
         QuotaUsageSnapshot snapshot,
         string displayLabel,
@@ -129,4 +141,22 @@ public static class OpenAiQuotaDisplayFormatter
 
     private static string NormalizeLabel(string value)
         => string.Concat(value.Where(character => !char.IsWhiteSpace(character))).ToLowerInvariant();
+
+    private static string CompactQuotaLabel(string value)
+    {
+        var normalizedLabel = NormalizeLabel(value);
+        if (normalizedLabel.StartsWith("5h", StringComparison.Ordinal))
+        {
+            return "5h";
+        }
+
+        if (normalizedLabel.Contains("week", StringComparison.Ordinal)
+            || normalizedLabel.Contains("weekly", StringComparison.Ordinal)
+            || normalizedLabel.Contains("周", StringComparison.Ordinal))
+        {
+            return "周";
+        }
+
+        return string.IsNullOrWhiteSpace(value) ? "quota" : value.Trim();
+    }
 }

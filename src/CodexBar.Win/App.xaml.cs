@@ -306,7 +306,8 @@ public partial class App : System.Windows.Application
 
         _settingsWindow = new SettingsWindow(
             () => IsOverlayVisible,
-            SetOverlayVisibleAsync);
+            SetOverlayVisibleAsync,
+            RefreshFlyoutAfterSettingsSaveAsync);
         if (_flyoutWindow?.IsVisible == true)
         {
             _settingsWindow.Owner = _flyoutWindow;
@@ -317,6 +318,15 @@ public partial class App : System.Windows.Application
         _settingsWindow.Activate();
         _settingsWindow.Focus();
         _settingsWindow.SyncOverlayState(IsOverlayVisible);
+    }
+
+    private async Task RefreshFlyoutAfterSettingsSaveAsync()
+    {
+        await _flyoutViewModel.RefreshAsync(
+            "\u6B63\u5728\u5E94\u7528\u8BBE\u7F6E...",
+            "\u8BBE\u7F6E\u5DF2\u5E94\u7528\u3002",
+            refreshOfficialUsage: false);
+        RefreshQuickSwitchMenuItems();
     }
 
     private void CloseFlyout()
@@ -439,48 +449,42 @@ public partial class App : System.Windows.Application
 
     private List<Forms.ToolStripItem> BuildQuickSwitchMenuItems()
     {
-        var activeItem = _flyoutViewModel.Accounts.FirstOrDefault(item => item.IsActive);
-        var currentText = activeItem is null
-            ? "\u5F53\u524D\uFF1A\u672A\u6FC0\u6D3B"
-            : $"\u5F53\u524D\uFF1A{BuildTrayAccountLabel(activeItem)}";
         var accountLabels = _flyoutViewModel.Accounts.Select(BuildTrayAccountLabel).ToList();
         var quickSwitchWidth = CalculateTrayMenuItemWidth(
-            ["\u5FEB\u901F\u9009\u62E9\u8D26\u53F7/API", currentText, .. accountLabels]);
+            ["\u5FEB\u901F\u9009\u62E9\u8D26\u53F7/API", .. accountLabels]);
+        var quickSwitchMenu = CreateMenuItem("\u5FEB\u901F\u9009\u62E9\u8D26\u53F7/API");
+        if (quickSwitchMenu.DropDown is Forms.ToolStripDropDownMenu dropDownMenu)
+        {
+            dropDownMenu.ShowImageMargin = false;
+            dropDownMenu.ShowCheckMargin = false;
+        }
         var items = new List<Forms.ToolStripItem>
         {
             new Forms.ToolStripSeparator(),
-            new Forms.ToolStripLabel("\u5FEB\u901F\u9009\u62E9\u8D26\u53F7/API")
-            {
-                AutoSize = false,
-                Width = quickSwitchWidth,
-                Height = 24,
-                Margin = new Forms.Padding(4, 2, 4, 2),
-                Padding = new Forms.Padding(6, 2, 6, 2),
-                Font = _trayMenuBoldFont,
-                ForeColor = Drawing.Color.FromArgb(96, 94, 92)
-            }
+            quickSwitchMenu
         };
-
-        items.Add(CreateInfoMenuItem(currentText, quickSwitchWidth));
 
         if (_trayAccountsLoading && _flyoutViewModel.Accounts.Count == 0)
         {
-            items.Add(CreateInfoMenuItem("\u6B63\u5728\u52A0\u8F7D\u8D26\u53F7...", quickSwitchWidth));
+            quickSwitchMenu.DropDownItems.Add(CreateInfoMenuItem("\u6B63\u5728\u52A0\u8F7D\u8D26\u53F7...", quickSwitchWidth));
             items.Add(new Forms.ToolStripSeparator());
             return items;
         }
 
         if (_flyoutViewModel.Accounts.Count == 0)
         {
-            items.Add(CreateInfoMenuItem("\u6682\u65E0\u53EF\u5207\u6362\u7684\u8D26\u53F7 / API", quickSwitchWidth));
+            quickSwitchMenu.DropDownItems.Add(CreateInfoMenuItem("\u6682\u65E0\u53EF\u5207\u6362\u7684\u8D26\u53F7 / API", quickSwitchWidth));
             items.Add(new Forms.ToolStripSeparator());
             return items;
         }
 
         foreach (var account in _flyoutViewModel.Accounts)
         {
+            var label = account.IsActive
+                ? $"\u2713 {BuildTrayAccountLabel(account)}"
+                : BuildTrayAccountLabel(account);
             var item = CreateMenuItem(
-                BuildTrayAccountLabel(account),
+                label,
                 async (_, _) => await QuickSwitchAccountAsync(account),
                 quickSwitchWidth);
             item.Enabled = !account.IsActive;
@@ -488,7 +492,7 @@ public partial class App : System.Windows.Application
                 ? Drawing.Color.FromArgb(0, 103, 192)
                 : Drawing.Color.FromArgb(28, 28, 28);
             item.Font = account.IsActive ? _trayMenuBoldFont : _trayMenuFont;
-            items.Add(item);
+            quickSwitchMenu.DropDownItems.Add(item);
         }
 
         items.Add(new Forms.ToolStripSeparator());

@@ -13,6 +13,7 @@ public partial class FlyoutWindow : Window
     private readonly MainFlyoutViewModel _viewModel;
     private readonly DispatcherTimer _autoRefreshTimer;
     private readonly Action? _showSettingsRequested;
+    private readonly Action? _toggleOverlayRequested;
     private System.Windows.Point _dragStartPoint;
     private AccountListItem? _draggedAccount;
     private ListBoxItem? _draggedContainer;
@@ -32,6 +33,7 @@ public partial class FlyoutWindow : Window
     {
         _viewModel = viewModel;
         _showSettingsRequested = showSettingsRequested;
+        _toggleOverlayRequested = toggleOverlayRequested;
 
         InitializeComponent();
         DataContext = _viewModel;
@@ -90,6 +92,9 @@ public partial class FlyoutWindow : Window
 
     private async void ActiveLaunch_Click(object sender, RoutedEventArgs e)
         => await LaunchOrRestartCodexAsync(null);
+
+    private void Overlay_Click(object sender, RoutedEventArgs e)
+        => _toggleOverlayRequested?.Invoke();
 
     private async Task LaunchOrRestartCodexAsync(AccountListItem? item)
     {

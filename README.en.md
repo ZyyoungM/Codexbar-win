@@ -3,7 +3,7 @@
 
 # CodexBar for Windows
 
-Current version: `v0.3.2`
+Current version: `v0.3.3`
 
 CodexBar for Windows is a Windows-native port of the macOS project [`lizhelang/codexbar`](https://github.com/lizhelang/codexbar). The goal is not to rebuild Codex itself, but to provide a smoother Windows entry point for switching accounts and providers while letting you manage official OpenAI accounts and third-party compatible APIs **without splitting the local `.codex` history pool**.
 
@@ -22,22 +22,22 @@ One-line summary:
 
 The day-to-day experience of CodexBar for Windows mainly revolves around two UI surfaces:
 
-- **Main flyout**: the primary high-frequency entry point for account/provider management, launching Codex, checking the active target, and opening settings.
+- **Main flyout**: the primary high-frequency entry point for account/provider management, launching Codex, checking the active target, and opening settings. The account list supports both standard and compact card views; compact cards are useful when you manage many accounts.
 - **Mini overlay**: a lightweight always-available view for quickly checking the active provider, usage summary, and latest refresh state; when expanded, it also shows more detailed usage information and the current mode.
 
-| Main flyout | Mini overlay (default) | Mini overlay (expanded) |
-| --- | --- | --- |
-| ![Main flyout UI](docs/images/preview-main-window.png) | ![Mini overlay collapsed view](docs/images/preview-mini-window-collapsed.png) | ![Mini overlay expanded view](docs/images/preview-mini-window-expanded.png) |
+| Main flyout (standard cards) | Main flyout (compact cards) | Mini overlay (default) | Mini overlay (expanded) |
+| --- | --- | --- | --- |
+| ![Main flyout standard card view](docs/images/preview-main-window.png) | ![Main flyout compact card view](docs/images/preview-main-window-compact.png) | ![Mini overlay collapsed view](docs/images/preview-mini-window-collapsed.png) | ![Mini overlay expanded view](docs/images/preview-mini-window-expanded.png) |
 
 ## Quick Start
 
 ### Option 1: Recommended portable package (download and run)
 
-If you just want to use CodexBar directly, the recommended path is to download `CodexBar-portable-win-x64-v0.3.2.zip` from the release page.
+If you just want to use CodexBar directly, the recommended path is to download `CodexBar-portable-win-x64-v0.3.3.zip` from the release page.
 
 After downloading the archive, you can get started in 3 steps:
 
-1. Extract `CodexBar-portable-win-x64-v0.3.2.zip`
+1. Extract `CodexBar-portable-win-x64-v0.3.3.zip`
 2. Open the extracted folder
 3. Double-click `start-codexbar.cmd`
 
@@ -181,6 +181,13 @@ The Windows porting work in this project builds on the product direction and imp
 ## Version Summary
 
 `README.md` only keeps a short summary of changes relative to the previous version. For full details, see [CHANGELOG.md](./CHANGELOG.md).
+
+### v0.3.3 - 2026-04-25
+
+- Collapsed the main flyout's top actions into one toolbar and added a persisted standard/compact account card view setting
+- Compact cards show official quota as inline `5h@...` / `周@...` rows while standard cards and the active-account card keep the original progress layout
+- Settings now closes immediately after saving and refreshes the main flyout configuration in the background; tray quick account/API switching moved into a submenu to avoid clipped text
+- Mini overlay quota labels now show the actual reset labels and expose tooltips
 
 ### v0.3.2 - 2026-04-24
 

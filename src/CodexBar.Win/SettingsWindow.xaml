@@ -340,6 +340,17 @@
                   <TextBlock Margin="0,6,0,0"
                              Style="{StaticResource InfoText}"
                              Text="自动模式会根据额度与状态做更合适的选择；手动模式始终使用当前手动选中的账号。" />
+
+                  <TextBlock Text="账号卡片视图"
+                             Margin="0,14,0,0"
+                             Style="{StaticResource FieldLabel}" />
+                  <ComboBox x:Name="AccountCardDensityBox"
+                            Width="240"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource InputComboBox}" />
+                  <TextBlock Margin="0,6,0,0"
+                             Style="{StaticResource InfoText}"
+                             Text="标准卡片保留完整信息；紧凑卡片减少来源文案和换行，适合账号较多时使用。" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="2">

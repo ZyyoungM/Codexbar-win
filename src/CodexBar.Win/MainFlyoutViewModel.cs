@@ -152,6 +152,8 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
 
     public bool IsManualRouting => !IsAutomaticRouting;
 
+    public bool IsCompactCardDensity => _config.Settings.AccountCardDensity == AccountCardDensity.Compact;
+
     public string RoutingModeBadgeText => BuildRoutingModeBadgeText(_config.Settings.OpenAiAccountMode);
 
     public string RoutingDescriptionText => BuildRoutingDescriptionText(_config.Settings.OpenAiAccountMode);
@@ -221,7 +223,10 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         }
     }
 
-    public async Task RefreshAsync(string? startActivity = null, string? completedActivity = null)
+    public async Task RefreshAsync(
+        string? startActivity = null,
+        string? completedActivity = null,
+        bool refreshOfficialUsage = true)
     {
         using var _ = EnterBusy();
         await _refreshGate.WaitAsync();
@@ -230,7 +235,7 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
             var refreshedAt = DateTimeOffset.Now;
             ErrorText = "";
             ActivityText = startActivity ?? "\u6B63\u5728\u5237\u65B0...";
-            _config = await LoadHydratedConfigAsync(TimeSpan.FromMinutes(1), refreshOfficialUsage: true);
+            _config = await LoadHydratedConfigAsync(TimeSpan.FromMinutes(1), refreshOfficialUsage);
             var home = _homeLocator.Resolve();
             var usageDashboard = await new UsageAttributionService(
                 new UsageScanner(),
@@ -1426,6 +1431,7 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         RoutingModeText = BuildRoutingModeText(_config.Settings.OpenAiAccountMode);
         FootnoteText = "\u5207\u6362\u4EC5\u5F71\u54CD\u65B0\u4F1A\u8BDD\u00B7\u73B0\u6709\u4F1A\u8BDD\u4FDD\u6301\u4E0D\u53D8";
         RaiseRoutingModePropertiesChanged();
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsCompactCardDensity)));
 
         Accounts.Clear();
         foreach (var account in OrderedAccounts(_config, usageDashboard))
@@ -1445,6 +1451,7 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 Name = account.Label,
                 ProviderBadge = BuildAccountProviderBadge(provider, account),
                 TierBadgeText = BuildAccountTierBadgeText(account),
+                CompactMetaText = BuildCompactAccountMetaText(provider, account),
                 Subtitle = BuildAccountSubtitle(provider, account),
                 IsActive = isActive,
                 IsOpenAi = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account),
@@ -1459,6 +1466,8 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 WeeklyUsedPercent = weeklyUsedPercent,
                 FiveHourQuotaLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.FiveHourQuota, "5h 额度"),
                 WeeklyQuotaLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.WeeklyQuota, "周额度"),
+                FiveHourQuotaInlineLabel = OpenAiQuotaDisplayFormatter.FormatInlineQuotaLabel(account.FiveHourQuota, "5h"),
+                WeeklyQuotaInlineLabel = OpenAiQuotaDisplayFormatter.FormatInlineQuotaLabel(account.WeeklyQuota, "week"),
                 FiveHourAvailableText = BuildAvailableQuotaText(account.FiveHourQuota),
                 WeeklyAvailableText = BuildAvailableQuotaText(account.WeeklyQuota),
                 FiveHourProgressBrush = BuildUsageBrush(fiveHourUsedPercent),
@@ -1544,6 +1553,18 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         }
 
         return string.IsNullOrWhiteSpace(provider?.DisplayName) ? "\u517C\u5BB9" : provider.DisplayName;
+    }
+
+    private static string BuildCompactAccountMetaText(ProviderDefinition? provider, AccountRecord account)
+    {
+        if (OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account))
+        {
+            return BuildAccountTierBadgeText(account);
+        }
+
+        return string.IsNullOrWhiteSpace(provider?.DisplayName)
+            ? account.ProviderId
+            : provider.DisplayName;
     }
 
     private static string BuildAccountSubtitle(ProviderDefinition? provider, AccountRecord account)
@@ -1839,6 +1860,8 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 WeeklyUsedPercent = weeklyUsedPercent,
                 FiveHourQuotaLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.FiveHourQuota, "5h 额度"),
                 WeeklyQuotaLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.WeeklyQuota, "周额度"),
+                FiveHourQuotaInlineLabel = OpenAiQuotaDisplayFormatter.FormatInlineQuotaLabel(account.FiveHourQuota, "5h"),
+                WeeklyQuotaInlineLabel = OpenAiQuotaDisplayFormatter.FormatInlineQuotaLabel(account.WeeklyQuota, "week"),
                 FiveHourAvailableText = BuildAvailableQuotaText(account.FiveHourQuota),
                 WeeklyAvailableText = BuildAvailableQuotaText(account.WeeklyQuota),
                 FiveHourProgressBrush = BuildUsageBrush(fiveHourUsedPercent),
@@ -1946,6 +1969,7 @@ public sealed record AccountListItem
     public required string Name { get; init; }
     public required string ProviderBadge { get; init; }
     public required string TierBadgeText { get; init; }
+    public string CompactMetaText { get; init; } = "";
     public required string Subtitle { get; init; }
     public required bool IsActive { get; init; }
     public required bool IsOpenAi { get; init; }
@@ -1960,12 +1984,16 @@ public sealed record AccountListItem
     public required int WeeklyUsedPercent { get; init; }
     public required string FiveHourQuotaLabel { get; init; }
     public required string WeeklyQuotaLabel { get; init; }
+    public string FiveHourQuotaInlineLabel { get; init; } = "5h@--";
+    public string WeeklyQuotaInlineLabel { get; init; } = "week@--";
     public required string FiveHourAvailableText { get; init; }
     public required string WeeklyAvailableText { get; init; }
     public required string FiveHourProgressBrush { get; init; }
     public required string WeeklyProgressBrush { get; init; }
 
     public bool HasTierBadge => !string.IsNullOrWhiteSpace(TierBadgeText);
+
+    public bool HasCompactMetaText => !string.IsNullOrWhiteSpace(CompactMetaText);
 
     public bool ShowQuotaBars => IsOpenAi;
 
@@ -2005,6 +2033,8 @@ public sealed record ActiveAccountSnapshot
     public int WeeklyUsedPercent { get; init; }
     public string FiveHourQuotaLabel { get; init; } = "5h 额度";
     public string WeeklyQuotaLabel { get; init; } = "周额度";
+    public string FiveHourQuotaInlineLabel { get; init; } = "5h@--";
+    public string WeeklyQuotaInlineLabel { get; init; } = "week@--";
     public string FiveHourAvailableText { get; init; } = "";
     public string WeeklyAvailableText { get; init; } = "";
     public string FiveHourProgressBrush { get; init; } = "#107C10";

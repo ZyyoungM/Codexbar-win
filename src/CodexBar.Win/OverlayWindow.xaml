@@ -177,9 +177,11 @@
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="5h 额度"
+            <TextBlock Text="{Binding ActiveAccount.FiveHourQuotaLabel}"
+                       ToolTip="{Binding ActiveAccount.FiveHourQuotaLabel}"
                        Foreground="#77FFFFFF"
-                       FontSize="8" />
+                       FontSize="8"
+                       TextTrimming="CharacterEllipsis" />
             <TextBlock Grid.Column="1"
                        Text="{Binding ActiveAccount.FiveHourAvailableText}"
                        Foreground="{Binding ActiveAccount.FiveHourProgressBrush}"
@@ -205,9 +207,11 @@
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="周额度"
+            <TextBlock Text="{Binding ActiveAccount.WeeklyQuotaLabel}"
+                       ToolTip="{Binding ActiveAccount.WeeklyQuotaLabel}"
                        Foreground="#77FFFFFF"
-                       FontSize="8" />
+                       FontSize="8"
+                       TextTrimming="CharacterEllipsis" />
             <TextBlock Grid.Column="1"
                        Text="{Binding ActiveAccount.WeeklyAvailableText}"
                        Foreground="{Binding ActiveAccount.WeeklyProgressBrush}"
