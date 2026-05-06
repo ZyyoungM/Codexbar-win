@@ -333,6 +333,7 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 Subtitle = "",
                 IsActive = true,
                 IsOpenAi = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(activeAccount),
+                NeedsReauthorization = OpenAiQuotaPolicy.NeedsReauth(activeAccount),
                 CanProbe = false,
                 CanRefreshOfficialQuota = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(activeAccount),
                 StatusText = "",
@@ -391,6 +392,7 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 Subtitle = "",
                 IsActive = true,
                 IsOpenAi = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(activeAccount),
+                NeedsReauthorization = OpenAiQuotaPolicy.NeedsReauth(activeAccount),
                 CanProbe = false,
                 CanRefreshOfficialQuota = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(activeAccount),
                 StatusText = "",
@@ -664,14 +666,21 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         await RefreshAsync("\u6B63\u5728\u5237\u65B0\u8D26\u53F7\u5217\u8868...", "\u517C\u5BB9 Provider \u5DF2\u4FDD\u5B58\u3002");
     }
 
-    public async Task AddOpenAiOAuthAsync(OAuthTokens tokens, string label)
+    public async Task AddOpenAiOAuthAsync(
+        OAuthTokens tokens,
+        string label,
+        OpenAiWorkspaceDescriptor? selectedWorkspaceHint = null)
     {
         using var _ = EnterBusy();
         ActivityText = "\u6B63\u5728\u4FDD\u5B58 OpenAI \u8D26\u53F7...";
         var identity = OAuthIdentityExtractor.Extract(tokens);
-        var displayLabel = string.IsNullOrWhiteSpace(label) || string.Equals(label, "OpenAI", StringComparison.OrdinalIgnoreCase)
-            ? identity.BestDisplayName(label)
-            : label;
+        var tokenAccountId = tokens.AccountId;
+        var discoveredWorkspaces = await OpenAiWorkspaceDiscovery.DiscoverAsync(tokens, identity);
+        var workspace = OpenAiWorkspaceDiscovery.ResolveCurrentForSave(discoveredWorkspaces, tokens, selectedWorkspaceHint);
+        tokens = workspace.ApplyTo(tokens);
+        var displayLabel = OpenAiWorkspaceLabelFormatter.ShouldGenerate(label, identity)
+            ? OpenAiWorkspaceLabelFormatter.Build(identity, workspace, label)
+            : label.Trim();
 
         _config = await _appConfigStore.LoadAsync();
         _config = await BackfillOAuthIdentitiesAsync(_config);
@@ -679,6 +688,27 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         var existingAccount = _config.Accounts.FirstOrDefault(a => a.ProviderId == "openai" && a.AccountId == accountId);
         var credentialRef = existingAccount?.CredentialRef ?? $"oauth:openai:{accountId}";
         await _secretStore.WriteTokensAsync(credentialRef, tokens);
+        _logger.Info("oauth.openai.save", new
+        {
+            email = identity.Email,
+            subjectPresent = !string.IsNullOrWhiteSpace(identity.SubjectId),
+            tokenAccountId,
+            selectedWorkspaceId = workspace.WorkspaceId,
+            selectedWorkspaceName = workspace.WorkspaceName,
+            selectedWorkspaceType = workspace.WorkspaceType,
+            selectedSeatType = workspace.SeatType,
+            discoveredWorkspaceCount = discoveredWorkspaces.Count,
+            discoveredWorkspaces = discoveredWorkspaces.Select(item => new
+            {
+                item.WorkspaceId,
+                item.WorkspaceName,
+                item.WorkspaceType,
+                item.SeatType,
+                item.IsCurrent
+            }).ToList(),
+            localAccountId = accountId,
+            existingAccountMatched = existingAccount is not null
+        });
 
         _config = _config with
         {
@@ -699,6 +729,11 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 Email = identity.Email ?? existingAccount?.Email,
                 SubjectId = identity.SubjectId ?? existingAccount?.SubjectId,
                 OpenAiAccountId = OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens) ?? existingAccount?.OpenAiAccountId,
+                WorkspaceId = workspace.WorkspaceId,
+                WorkspaceName = workspace.WorkspaceName,
+                WorkspaceType = workspace.WorkspaceType ?? existingAccount?.WorkspaceType,
+                SeatType = workspace.SeatType ?? existingAccount?.SeatType,
+                QuotaScopeKey = workspace.QuotaScopeKey ?? existingAccount?.QuotaScopeKey,
                 CredentialRef = credentialRef,
                 Status = AccountStatus.Active,
                 CreatedAt = existingAccount?.CreatedAt ?? DateTimeOffset.UtcNow,
@@ -764,6 +799,9 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                     .Where(a => string.Equals(a.ProviderId, result.OriginalProviderId, StringComparison.OrdinalIgnoreCase))
                     .ToList()
                 : [account];
+            var tokenCountResetAt = provider.Kind == ProviderKind.OpenAiCompatible && result.ResetTokenCountRequested
+                ? DateTimeOffset.UtcNow
+                : (DateTimeOffset?)null;
             var preservedSecrets = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
             if (provider.Kind == ProviderKind.OpenAiCompatible)
             {
@@ -812,8 +850,14 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                         CredentialRef = CompatibleCredentialRef(nextProviderId, a.AccountId)
                     };
 
-                    return string.Equals(a.AccountId, result.OriginalAccountId, StringComparison.OrdinalIgnoreCase)
-                        ? updated with { Label = result.AccountLabel }
+                    if (!string.Equals(a.AccountId, result.OriginalAccountId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return updated;
+                    }
+
+                    updated = updated with { Label = result.AccountLabel };
+                    return tokenCountResetAt.HasValue
+                        ? updated with { TokenCountResetAt = tokenCountResetAt }
                         : updated;
                 }).ToList(),
                 Profiles = _config.Profiles.Select(profile =>
@@ -853,7 +897,10 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 }
             }
 
-            await RefreshAsync("\u6B63\u5728\u5237\u65B0\u8D26\u53F7\u5217\u8868...", "\u8D26\u53F7\u4FEE\u6539\u5DF2\u4FDD\u5B58\u3002");
+            var completedMessage = result.ResetTokenCountRequested
+                ? "\u8D26\u53F7\u4FEE\u6539\u5DF2\u4FDD\u5B58\uFF0Ctoken \u8BA1\u6570\u5DF2\u91CD\u7F6E\u3002"
+                : "\u8D26\u53F7\u4FEE\u6539\u5DF2\u4FDD\u5B58\u3002";
+            await RefreshAsync("\u6B63\u5728\u5237\u65B0\u8D26\u53F7\u5217\u8868...", completedMessage);
         }
         catch (Exception ex)
         {
@@ -962,10 +1009,11 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
             }
 
             var identity = OAuthIdentityExtractor.Extract(tokens);
+            var workspace = OpenAiWorkspaceDiscovery.CurrentOrFallback(tokens, identity);
             var label = account.Label;
             if (string.IsNullOrWhiteSpace(label) || string.Equals(label, "OpenAI", StringComparison.OrdinalIgnoreCase))
             {
-                label = identity.BestDisplayName(account.Label);
+                label = OpenAiWorkspaceLabelFormatter.Build(identity, workspace, account.Label);
             }
 
             var updated = account with
@@ -973,7 +1021,12 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 Label = label,
                 Email = account.Email ?? identity.Email,
                 SubjectId = account.SubjectId ?? identity.SubjectId,
-                OpenAiAccountId = account.OpenAiAccountId ?? OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens)
+                OpenAiAccountId = account.OpenAiAccountId ?? OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens),
+                WorkspaceId = account.WorkspaceId ?? workspace.WorkspaceId,
+                WorkspaceName = account.WorkspaceName ?? workspace.WorkspaceName,
+                WorkspaceType = account.WorkspaceType ?? workspace.WorkspaceType,
+                SeatType = account.SeatType ?? workspace.SeatType,
+                QuotaScopeKey = account.QuotaScopeKey ?? workspace.QuotaScopeKey
             };
             changed |= updated != account;
             accounts.Add(updated);
@@ -1444,17 +1497,19 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
             var useCompactTokenUnit = provider?.Kind == ProviderKind.OpenAiCompatible;
             var fiveHourUsedPercent = ClampUsagePercent(account.FiveHourQuota);
             var weeklyUsedPercent = ClampUsagePercent(account.WeeklyQuota);
+            var needsReauthorization = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account) && OpenAiQuotaPolicy.NeedsReauth(account);
             Accounts.Add(new AccountListItem
             {
                 ProviderId = account.ProviderId,
                 AccountId = account.AccountId,
-                Name = account.Label,
+                Name = BuildAccountTitle(account),
                 ProviderBadge = BuildAccountProviderBadge(provider, account),
                 TierBadgeText = BuildAccountTierBadgeText(account),
                 CompactMetaText = BuildCompactAccountMetaText(provider, account),
-                Subtitle = BuildAccountSubtitle(provider, account),
+                Subtitle = BuildAccountSubtitle(provider, account, _config.Accounts),
                 IsActive = isActive,
                 IsOpenAi = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account),
+                NeedsReauthorization = needsReauthorization,
                 CanProbe = provider?.Kind == ProviderKind.OpenAiCompatible,
                 CanRefreshOfficialQuota = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account),
                 StatusText = BuildAccountStatusText(provider, account),
@@ -1555,6 +1610,22 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         return string.IsNullOrWhiteSpace(provider?.DisplayName) ? "\u517C\u5BB9" : provider.DisplayName;
     }
 
+    private static string BuildAccountTitle(AccountRecord account)
+    {
+        var workspaceName = OpenAiAccountDisplayFormatter.EffectiveWorkspaceName(account);
+        if (!OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account) ||
+            string.IsNullOrWhiteSpace(account.Email) ||
+            string.IsNullOrWhiteSpace(workspaceName) ||
+            string.Equals(workspaceName, "Current workspace", StringComparison.OrdinalIgnoreCase))
+        {
+            return account.Label;
+        }
+
+        return IsDuplicateAccountText(account.Email, workspaceName)
+            ? account.Email!
+            : $"{account.Email} · {workspaceName}";
+    }
+
     private static string BuildCompactAccountMetaText(ProviderDefinition? provider, AccountRecord account)
     {
         if (OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account))
@@ -1567,13 +1638,51 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
             : provider.DisplayName;
     }
 
-    private static string BuildAccountSubtitle(ProviderDefinition? provider, AccountRecord account)
+    private static string BuildAccountSubtitle(
+        ProviderDefinition? provider,
+        AccountRecord account,
+        IReadOnlyList<AccountRecord>? allAccounts = null)
     {
         var subtitle = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account)
-            ? (string.IsNullOrWhiteSpace(account.Email) ? "OpenAI OAuth \u8D26\u53F7" : account.Email!)
+            ? BuildOpenAiWorkspaceSubtitle(account, allAccounts)
             : provider is null ? account.AccountId : BuildCompatibleSubtitle(provider, account);
 
         return IsDuplicateAccountText(account.Label, subtitle) ? "" : subtitle;
+    }
+
+    private static string BuildOpenAiWorkspaceSubtitle(
+        AccountRecord account,
+        IReadOnlyList<AccountRecord>? allAccounts)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(account.Email))
+        {
+            parts.Add(account.Email!);
+        }
+
+        var tier = OpenAiAccountDisplayFormatter.FormatTier(account);
+        if (!string.IsNullOrWhiteSpace(tier))
+        {
+            parts.Add(tier);
+        }
+
+        if (!string.IsNullOrWhiteSpace(account.WorkspaceType) &&
+            !string.Equals(account.WorkspaceType, tier, StringComparison.OrdinalIgnoreCase))
+        {
+            parts.Add(account.WorkspaceType!);
+        }
+
+        if (!string.IsNullOrWhiteSpace(account.SeatType))
+        {
+            parts.Add(account.SeatType!);
+        }
+
+        if (allAccounts is not null && OpenAiQuotaPolicy.HasSharedQuotaScope(account, allAccounts))
+        {
+            parts.Add("shared quota");
+        }
+
+        return parts.Count == 0 ? "OpenAI OAuth \u8D26\u53F7" : string.Join(" · ", parts);
     }
 
     private static bool IsDuplicateAccountText(string primary, string secondary)
@@ -1588,7 +1697,7 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
 
     private static string BuildAccountTierBadgeText(AccountRecord account)
         => OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account)
-            ? FormatTier(account) ?? ""
+            ? OpenAiAccountDisplayFormatter.FormatTier(account) ?? ""
             : "";
 
     private static string BuildAccountStatusText(ProviderDefinition? provider, AccountRecord account)
@@ -1671,7 +1780,7 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         }
 
         var parts = new List<string>();
-        var tier = FormatTier(account);
+        var tier = OpenAiAccountDisplayFormatter.FormatTier(account);
         if (!string.IsNullOrWhiteSpace(tier))
         {
             parts.Add(tier);
@@ -1700,50 +1809,6 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         }
 
         return $" [{string.Join(" | ", parts)}]";
-    }
-
-    private static string? FormatTier(AccountRecord account)
-    {
-        if (!string.IsNullOrWhiteSpace(account.OfficialPlanTypeRaw))
-        {
-            var normalized = account.OfficialPlanTypeRaw.Trim().ToLowerInvariant();
-            if (normalized.Contains("pro", StringComparison.Ordinal) && normalized.Contains("10", StringComparison.Ordinal))
-            {
-                return "pro 10x";
-            }
-
-            if (normalized.Contains("pro", StringComparison.Ordinal) && normalized.Contains("5", StringComparison.Ordinal))
-            {
-                return "pro 5x";
-            }
-
-            if (normalized.Contains("plus", StringComparison.Ordinal))
-            {
-                return "plus";
-            }
-
-            if (normalized.Contains("go", StringComparison.Ordinal))
-            {
-                return "go";
-            }
-
-            if (normalized.Contains("free", StringComparison.Ordinal))
-            {
-                return "free";
-            }
-
-            if (normalized.Contains("pro", StringComparison.Ordinal))
-            {
-                return "pro";
-            }
-        }
-
-        if (account.Tier != AccountTier.Unknown)
-        {
-            return account.Tier.ToString().ToLowerInvariant();
-        }
-
-        return null;
     }
 
     private static string BuildQuotaErrorTag(AccountRecord account)
@@ -1832,7 +1897,7 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         var daily = FormatTokenCount(usage?.Today.TotalTokens ?? 0, useCompactTokenUnit);
         var weekly = FormatTokenCount(usage?.Last7Days.TotalTokens ?? 0, useCompactTokenUnit);
         var monthly = FormatTokenCount(usage?.Last30Days.TotalTokens ?? 0, useCompactTokenUnit);
-        var subtitle = BuildAccountSubtitle(provider, account);
+        var subtitle = BuildAccountSubtitle(provider, account, config.Accounts);
 
         if (provider.Kind == ProviderKind.OpenAiOAuth)
         {
@@ -1840,7 +1905,7 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
             var weeklyUsedPercent = ClampUsagePercent(account.WeeklyQuota);
             return new ActiveAccountSnapshot
             {
-                Title = account.Label,
+                Title = BuildAccountTitle(account),
                 AccountTypeLabel = "OpenAI",
                 ProviderBadge = "OpenAI",
                 TierBadgeText = BuildAccountTierBadgeText(account),
@@ -1973,6 +2038,7 @@ public sealed record AccountListItem
     public required string Subtitle { get; init; }
     public required bool IsActive { get; init; }
     public required bool IsOpenAi { get; init; }
+    public required bool NeedsReauthorization { get; init; }
     public required bool CanProbe { get; init; }
     public required bool CanRefreshOfficialQuota { get; init; }
     public required string StatusText { get; init; }
@@ -2001,9 +2067,9 @@ public sealed record AccountListItem
 
     public bool HasSubtitle => !string.IsNullOrWhiteSpace(Subtitle);
 
-    public bool CanActivate => !IsActive;
+    public bool CanActivate => !IsActive && !NeedsReauthorization;
 
-    public bool CanLaunch => IsActive;
+    public bool CanLaunch => IsActive && !NeedsReauthorization;
 
     public double FiveHourUsedRatio => FiveHourUsedPercent / 100d;
 

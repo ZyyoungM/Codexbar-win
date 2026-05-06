@@ -3,7 +3,7 @@
 
 # CodexBar for Windows
 
-当前版本：`v0.3.3`
+当前版本：`v0.3.4`
 
 CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/lizhelang/codexbar) 的 Windows 原生移植版。它的目标不是重做 Codex，而是在 Windows 上提供一个更顺手的账号与 Provider 切换入口，让你在**不拆分本地 `.codex` 历史池**的前提下管理 OpenAI 官方账号和第三方兼容接口。
 
@@ -33,11 +33,11 @@ CodexBar for Windows 的日常交互主要围绕两类界面展开：
 
 ### 方式一：推荐使用便携包（下载后即用）
 
-如果你只是想直接使用 CodexBar，推荐优先使用便携包，直接去 release 下载 `CodexBar-portable-win-x64-v0.3.3.zip`。
+如果你只是想直接使用 CodexBar，推荐优先使用便携包，直接去 release 下载 `CodexBar-portable-win-x64-v0.3.4.zip`。
 
 拿到压缩包后，按下面 3 步即可开始使用：
 
-1. 解压 `CodexBar-portable-win-x64-v0.3.3.zip`
+1. 解压 `CodexBar-portable-win-x64-v0.3.4.zip`
 2. 进入解压后的目录
 3. 双击 `start-codexbar.cmd`
 
@@ -109,8 +109,9 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 1. 打开设置页
 2. 选择登录 OpenAI
 3. 在浏览器里完成 OAuth 授权
-4. 回到 CodexBar 选择目标账号并激活
-5. 从 CodexBar 启动 Codex
+4. 如果同一登录身份下发现多个 workspace，在 CodexBar 里选择 Personal / Team / Business / Enterprise / Edu 等目标空间
+5. 回到 CodexBar 选择目标账号 / workspace 并激活
+6. 从 CodexBar 启动 Codex
 
 如果浏览器回调没有自动完成，也可以继续使用手工粘贴 callback URL / `code` 的 fallback。
 
@@ -136,6 +137,7 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 
 - 本地 usage 扫描：今日 / 近 7 天 / 近 30 天 / 累计
 - OpenAI 官方套餐与剩余额度只读刷新
+- 同一 OpenAI 登录身份下的 workspace 分开显示，不跨 workspace 相加；如果官方返回同一 quota scope，会标记为共享额度池
 
 这些信息更适合帮助你判断当前该切到哪个账号，而不是作为精确计费系统使用。
 
@@ -181,6 +183,13 @@ dotnet run --project .\src\CodexBar.Cli\CodexBar.Cli.csproj -- import-history --
 ## 版本更新摘要
 
 `README.md` 只保留相对上个版本的简要说明，详细变更请看 [CHANGELOG.md](./CHANGELOG.md)。
+
+### v0.3.4 - 2026-05-06
+
+- OpenAI OAuth 改为按 ChatGPT/Codex workspace 保存，同一邮箱下的 Personal / Team / Business / Enterprise / Edu 空间可同时保留、展示和切换
+- 官方额度刷新按目标 workspace/account id 请求并显示 Team 套餐、workspace 名称和共享额度池状态，不做跨 workspace 额度相加
+- 第三方兼容 API 的编辑账号窗口新增“重置 token 计数”，只重置 CodexBar 本地 usage 归因起点，不改写 shared `.codex` 历史
+- CSV 导入 / 导出保留 workspace 元数据与本地 token 计数重置时间，默认仍不导出 token 或密钥
 
 ### v0.3.3 - 2026-04-25
 

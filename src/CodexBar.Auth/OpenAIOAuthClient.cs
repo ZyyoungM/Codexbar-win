@@ -33,6 +33,7 @@ public sealed class OpenAIOAuthClient
             ["code_challenge_method"] = "S256",
             ["id_token_add_organizations"] = "true",
             ["codex_cli_simplified_flow"] = "true",
+            ["allowed_workspace_id"] = string.IsNullOrWhiteSpace(options.AllowedWorkspaceId) ? null : options.AllowedWorkspaceId.Trim(),
             ["originator"] = "Codex Desktop"
         };
 
@@ -132,10 +133,50 @@ public sealed class OpenAIOAuthClient
                 AccessToken = AccessToken,
                 RefreshToken = RefreshToken,
                 IdToken = IdToken,
-                AccountId = AccountId,
+                AccountId = AccountId ?? ReadChatGptAccountId(IdToken),
                 ClientId = clientId,
                 LastRefresh = DateTimeOffset.UtcNow,
                 ExtensionData = ExtensionData
             };
+    }
+
+    private static string? ReadChatGptAccountId(string? idToken)
+    {
+        if (string.IsNullOrWhiteSpace(idToken))
+        {
+            return null;
+        }
+
+        try
+        {
+            var parts = idToken.Split('.');
+            if (parts.Length < 2)
+            {
+                return null;
+            }
+
+            var payload = DecodeBase64Url(parts[1]);
+            using var document = JsonDocument.Parse(payload);
+            if (!document.RootElement.TryGetProperty("https://api.openai.com/auth", out var authClaim) ||
+                authClaim.ValueKind != JsonValueKind.Object ||
+                !authClaim.TryGetProperty("chatgpt_account_id", out var accountId) ||
+                accountId.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            return string.IsNullOrWhiteSpace(accountId.GetString()) ? null : accountId.GetString()!.Trim();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static byte[] DecodeBase64Url(string value)
+    {
+        var padded = value.Replace('-', '+').Replace('_', '/');
+        padded = padded.PadRight(padded.Length + ((4 - padded.Length % 4) % 4), '=');
+        return Convert.FromBase64String(padded);
     }
 }

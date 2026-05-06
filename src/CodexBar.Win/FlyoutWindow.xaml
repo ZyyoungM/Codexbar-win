@@ -114,6 +114,13 @@
       <Setter Property="BorderBrush" Value="#0067C0" />
     </Style>
 
+    <Style x:Key="MiniDangerButton" TargetType="Button" BasedOn="{StaticResource MiniSecondaryButton}">
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Background" Value="#C42B1C" />
+      <Setter Property="BorderBrush" Value="#C42B1C" />
+      <Setter Property="MinWidth" Value="70" />
+    </Style>
+
     <Style x:Key="TierBadgeBorder" TargetType="Border">
       <Setter Property="Margin" Value="0,0,8,4" />
       <Setter Property="Padding" Value="6,2" />
@@ -678,6 +685,11 @@
                           Style="{StaticResource MiniSecondaryButton}"
                           Visibility="{Binding CanActivate, Converter={StaticResource BoolToVisibility}}"
                           Click="UseAccount_Click" />
+                  <Button Content="重新授权"
+                          Style="{StaticResource MiniDangerButton}"
+                          Visibility="{Binding NeedsReauthorization, Converter={StaticResource BoolToVisibility}}"
+                          ToolTip="重新登录 OpenAI 并刷新 OAuth 授权"
+                          Click="ReauthorizeAccount_Click" />
                   <Button Content="启动"
                           Style="{StaticResource MiniPrimaryButton}"
                           Visibility="{Binding CanLaunch, Converter={StaticResource BoolToVisibility}}"
@@ -721,6 +733,11 @@
                           Visibility="{Binding CanActivate, Converter={StaticResource BoolToVisibility}}"
                           ToolTip="切换账号"
                           Click="UseAccount_Click" />
+                  <Button Content="重新授权"
+                          Style="{StaticResource MiniDangerButton}"
+                          Visibility="{Binding NeedsReauthorization, Converter={StaticResource BoolToVisibility}}"
+                          ToolTip="重新登录 OpenAI 并刷新 OAuth 授权"
+                          Click="ReauthorizeAccount_Click" />
                   <Button Content="&#xE768;"
                           Style="{StaticResource IconActionButton}"
                           Visibility="{Binding CanLaunch, Converter={StaticResource BoolToVisibility}}"

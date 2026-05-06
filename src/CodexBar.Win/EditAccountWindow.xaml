@@ -200,6 +200,27 @@
             <TextBlock Margin="0,14,0,0" Text="新 API Key（留空则保留当前值）" Style="{StaticResource FieldLabel}" />
             <PasswordBox x:Name="ApiKeyBox" />
 
+            <Grid Margin="0,14,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+
+              <TextBlock Grid.Column="0"
+                         Text="重置只影响 CodexBar 本地显示的 token 计数，不会删除 shared .codex 历史。"
+                         Foreground="#605E5C"
+                         FontSize="10"
+                         TextWrapping="Wrap"
+                         VerticalAlignment="Center" />
+              <Button x:Name="ResetTokenCountButton"
+                      Grid.Column="1"
+                      Content="重置 token 计数"
+                      Width="118"
+                      Margin="12,0,0,0"
+                      Style="{StaticResource ActionButton}"
+                      Click="ResetTokenCount_Click" />
+            </Grid>
+
             <Expander x:Name="AdvancedCompatExpander"
                       Header="高级兼容选项"
                       IsExpanded="False"

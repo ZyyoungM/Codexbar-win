@@ -71,7 +71,7 @@ export function OAuthDialog({ theme = 'light', onClose, onCompleted }: OAuthDial
     setCommandError('');
     setCommandSuccess('');
     try {
-      const result = await codexbarApi.completeOAuth(manualInput, label);
+      const result = await codexbarApi.completeOAuth(manualInput, label, state?.selectedWorkspaceId);
       if (result.ok) {
         setCommandSuccess(result.message);
         onCompleted?.();
@@ -132,6 +132,35 @@ export function OAuthDialog({ theme = 'light', onClose, onCompleted }: OAuthDial
             </label>
             <Windows11Input placeholder="例如: 个人账号" theme={theme} value={label} onChange={setLabel} />
           </div>
+
+          {!!state?.workspaces?.length && state.workspaces.length > 1 && (
+            <div className="mb-4">
+              <div className={`text-[12px] mb-2 ${isDark ? 'text-white/60' : 'text-[#605e5c]'}`}>Workspace</div>
+              <div className="grid gap-2">
+                {state.workspaces.map((workspace) => {
+                  const selected = state.selectedWorkspaceId === workspace.workspaceId;
+                  return (
+                    <button
+                      key={workspace.workspaceId}
+                      type="button"
+                      className={`text-left px-3 py-2 rounded border transition-colors ${
+                        selected
+                          ? isDark ? 'border-[#60cdff] bg-[#60cdff]/15' : 'border-[#0067c0] bg-[#e6f3ff]'
+                          : isDark ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'border-[#0000001a] bg-white hover:bg-[#f5f5f5]'
+                      }`}
+                      disabled={busy}
+                      onClick={() => void runStateAction(() => codexbarApi.selectOAuthWorkspace(workspace.workspaceId))}
+                    >
+                      <div className={`text-[13px] font-semibold ${isDark ? 'text-white' : 'text-[#1c1c1c]'}`}>{workspace.workspaceName}</div>
+                      <div className={`mt-1 text-[11px] ${isDark ? 'text-white/55' : 'text-[#605e5c]'}`}>
+                        {workspace.displayLabel}{workspace.isCurrent ? ' · current' : ''}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {(commandError || state?.errorMessage) && (
             <div className={`mb-3 p-3 rounded border ${isDark ? 'bg-[#c42b1c]/10 border-[#c42b1c]/30' : 'bg-[#fef6f6] border-[#f1b9b9]'}`}>

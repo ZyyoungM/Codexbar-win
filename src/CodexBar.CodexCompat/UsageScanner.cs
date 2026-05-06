@@ -49,6 +49,7 @@ public sealed class UsageScanner
                             continue;
                         }
 
+                        startedAt ??= usageEvent.Timestamp;
                         input += usageEvent.InputTokens;
                         output += usageEvent.OutputTokens;
                         cached += usageEvent.CachedInputTokens;

@@ -32,7 +32,7 @@ internal static class ApiRegressionTests
 
         var result = await manager.CompleteAsync(
             new FrontendOAuthCompleteRequest("manual-callback", "Manual"),
-            (tokens, _, _) =>
+            (tokens, _, _, _) =>
             {
                 savedTokens.Add(tokens);
                 return Task.FromResult(new FrontendCommandResult(true, "saved"));
@@ -54,7 +54,7 @@ internal static class ApiRegressionTests
         var initial = await manager.GetStateAsync();
         var result = await manager.CompleteAsync(
             new FrontendOAuthCompleteRequest("manual-callback", "Manual"),
-            (_, _, _) => Task.FromResult(new FrontendCommandResult(true, "saved")),
+            (_, _, _, _) => Task.FromResult(new FrontendCommandResult(true, "saved")),
             CancellationToken.None);
 
         ApiRegressionAssertions.AssertTrue(result.Ok, result.Message);
@@ -68,7 +68,7 @@ internal static class ApiRegressionTests
 
         var retry = await manager.CompleteAsync(
             new FrontendOAuthCompleteRequest("", "Retry"),
-            (_, _, _) => Task.FromResult(new FrontendCommandResult(true, "unexpected")),
+            (_, _, _, _) => Task.FromResult(new FrontendCommandResult(true, "unexpected")),
             CancellationToken.None);
         ApiRegressionAssertions.AssertTrue(!retry.Ok, "blank retry should not be able to reuse the previous login result");
     }
@@ -86,7 +86,7 @@ internal static class ApiRegressionTests
 
         var result = await manager.CompleteAsync(
             new FrontendOAuthCompleteRequest("manual-callback", "Manual"),
-            (_, _, _) => Task.FromResult(new FrontendCommandResult(true, "saved")),
+            (_, _, _, _) => Task.FromResult(new FrontendCommandResult(true, "saved")),
             CancellationToken.None);
 
         ApiRegressionAssertions.AssertTrue(result.Ok, result.Message);
@@ -97,6 +97,79 @@ internal static class ApiRegressionTests
             await loopback.Starts.WaitAsync(TimeSpan.FromSeconds(2)),
             "expected a fresh localhost listener to start after rotating the OAuth flow");
         ApiRegressionAssertions.AssertEqual(2, loopback.StartCalls);
+    }
+
+    public static async Task OAuthStartPassesAllowedWorkspaceIdTest()
+    {
+        var client = new FakeOAuthClient();
+        var manager = new OAuthSessionManager(client, new FakeLoopbackCallbackListener("code"));
+
+        var state = await manager.OpenBrowserAsync("workspace-team");
+
+        ApiRegressionAssertions.AssertEqual("workspace-team", client.AllowedWorkspaceIds.Single());
+        ApiRegressionAssertions.AssertContains(state.AuthorizationUrl, "workspace=workspace-team");
+    }
+
+    public static async Task OAuthWorkspaceSelectionRestartsLoginWithoutManualIdTest()
+    {
+        var client = new FakeOAuthClient();
+        var discovery = new FakeOAuthWorkspaceDiscovery(
+        [
+            new OpenAiWorkspaceDescriptor("captured-account", "Personal", "personal", "account-owner", null, true),
+            new OpenAiWorkspaceDescriptor("workspace-account", "Work", "workspace", "standard-user", null, false)
+        ]);
+        var manager = new OAuthSessionManager(client, new FakeLoopbackCallbackListener("code"), discovery);
+
+        await manager.ListenAsync();
+        var captured = await WaitForCapturedStateAsync(manager);
+        ApiRegressionAssertions.AssertEqual(2, captured.Workspaces.Count);
+        ApiRegressionAssertions.AssertEqual("captured-account", captured.SelectedWorkspaceId);
+
+        var next = await manager.SelectWorkspaceAsync("workspace-account");
+
+        ApiRegressionAssertions.AssertEqual("workspace-account", client.AllowedWorkspaceIds.Last());
+        ApiRegressionAssertions.AssertContains(next.AuthorizationUrl, "workspace=workspace-account");
+        ApiRegressionAssertions.AssertEqual("workspace-account", next.SelectedWorkspaceId);
+        ApiRegressionAssertions.AssertTrue(next.IsListening, "selecting another workspace should start the loopback listener");
+        ApiRegressionAssertions.AssertEqual(1, client.OpenedUrls.Count);
+        ApiRegressionAssertions.AssertContains(client.OpenedUrls.Single().ToString(), "workspace=workspace-account");
+
+        var recaptured = await WaitForCapturedStateAsync(manager);
+        ApiRegressionAssertions.AssertEqual("workspace-account", recaptured.SelectedWorkspaceId);
+        OpenAiWorkspaceDescriptor? savedHint = null;
+        var saved = await manager.CompleteAsync(
+            new FrontendOAuthCompleteRequest("", "OpenAI"),
+            (_, _, hint, _) =>
+            {
+                savedHint = hint;
+                return Task.FromResult(new FrontendCommandResult(true, "saved"));
+            },
+            CancellationToken.None);
+        ApiRegressionAssertions.AssertTrue(saved.Ok, saved.Message);
+        ApiRegressionAssertions.AssertEqual("workspace-account", savedHint?.WorkspaceId);
+        ApiRegressionAssertions.AssertEqual("Work", savedHint?.WorkspaceName);
+    }
+
+    public static async Task OAuthCompleteRejectsAllowedWorkspaceMismatchTest()
+    {
+        var client = new FakeOAuthClient();
+        var manager = new OAuthSessionManager(client, new FakeLoopbackCallbackListener("code"));
+        var saved = false;
+
+        await manager.OpenBrowserAsync("workspace-team");
+        var result = await manager.CompleteAsync(
+            new FrontendOAuthCompleteRequest("manual-callback", "Manual"),
+            (_, _, _, _) =>
+            {
+                saved = true;
+                return Task.FromResult(new FrontendCommandResult(true, "saved"));
+            },
+            CancellationToken.None);
+
+        ApiRegressionAssertions.AssertTrue(!result.Ok, "workspace mismatch should be rejected");
+        ApiRegressionAssertions.AssertTrue(!saved, "mismatched workspace token must not be saved");
+        ApiRegressionAssertions.AssertContains(result.Message, "workspace-team");
+        ApiRegressionAssertions.AssertContains(result.Message, "manual-account");
     }
 
     public static async Task ReorderAccountsRejectsPartialPayloadTest()
@@ -197,6 +270,22 @@ internal static class ApiRegressionTests
                 .ToArray());
         ApiRegressionAssertions.AssertEqual(3, reloaded.Accounts.Count);
     }
+
+    private static async Task<FrontendOAuthStateDto> WaitForCapturedStateAsync(OAuthSessionManager manager)
+    {
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            var state = await manager.GetStateAsync();
+            if (state.HasCapturedTokens)
+            {
+                return state;
+            }
+
+            await Task.Delay(20);
+        }
+
+        throw new TimeoutException("Expected OAuth callback tokens to be captured.");
+    }
 }
 
 internal sealed class FakeOAuthClient : IOpenAiOAuthClient
@@ -206,13 +295,16 @@ internal sealed class FakeOAuthClient : IOpenAiOAuthClient
     public int ManualInputCalls { get; private set; }
     public List<string> ManualInputs { get; } = [];
     public TaskCompletionSource<bool> ExchangeCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public List<string?> AllowedWorkspaceIds { get; } = [];
+    public List<Uri> OpenedUrls { get; } = [];
 
-    public OAuthPendingFlow BeginLogin()
+    public OAuthPendingFlow BeginLogin(string? allowedWorkspaceId = null)
     {
+        AllowedWorkspaceIds.Add(allowedWorkspaceId);
         var flowId = Interlocked.Increment(ref _flowCounter);
         return new OAuthPendingFlow
         {
-            AuthorizationUrl = new Uri($"https://auth.example.test/authorize?flow={flowId}", UriKind.Absolute),
+            AuthorizationUrl = new Uri($"https://auth.example.test/authorize?flow={flowId}&workspace={allowedWorkspaceId}", UriKind.Absolute),
             State = $"state-{flowId}",
             CodeVerifier = $"verifier-{flowId}",
             RedirectUri = new Uri("http://localhost:1455/auth/callback", UriKind.Absolute),
@@ -220,13 +312,15 @@ internal sealed class FakeOAuthClient : IOpenAiOAuthClient
             {
                 AuthorizationEndpoint = new Uri("https://auth.example.test/authorize", UriKind.Absolute),
                 TokenEndpoint = new Uri("https://auth.example.test/token", UriKind.Absolute),
-                RedirectUri = new Uri("http://localhost:1455/auth/callback", UriKind.Absolute)
+                RedirectUri = new Uri("http://localhost:1455/auth/callback", UriKind.Absolute),
+                AllowedWorkspaceId = allowedWorkspaceId
             }
         };
     }
 
     public void OpenSystemBrowser(Uri authorizationUrl)
     {
+        OpenedUrls.Add(authorizationUrl);
     }
 
     public Task<OAuthTokens> ExchangeCodeAsync(OAuthPendingFlow flow, string code, CancellationToken cancellationToken = default)
@@ -236,7 +330,7 @@ internal sealed class FakeOAuthClient : IOpenAiOAuthClient
         {
             AccessToken = "captured-access",
             RefreshToken = "captured-refresh",
-            AccountId = "captured-account"
+            AccountId = flow.Options.AllowedWorkspaceId ?? "captured-account"
         });
     }
 
@@ -251,6 +345,21 @@ internal sealed class FakeOAuthClient : IOpenAiOAuthClient
             AccountId = "manual-account"
         });
     }
+}
+
+internal sealed class FakeOAuthWorkspaceDiscovery : IOpenAiWorkspaceDiscoveryService
+{
+    private readonly IReadOnlyList<OpenAiWorkspaceDescriptor> _workspaces;
+
+    public FakeOAuthWorkspaceDiscovery(IReadOnlyList<OpenAiWorkspaceDescriptor> workspaces)
+    {
+        _workspaces = workspaces;
+    }
+
+    public Task<IReadOnlyList<OpenAiWorkspaceDescriptor>> DiscoverAsync(
+        OAuthTokens tokens,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(_workspaces);
 }
 
 internal sealed class FakeLoopbackCallbackListener : ILoopbackCallbackListener

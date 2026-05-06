@@ -85,6 +85,7 @@ public sealed class OpenAiAggregateGatewayService
 
         var resolvedAccount = candidateAccounts
             .OrderBy(item => OpenAiQuotaPolicy.RoutingStatusRank(item))
+            .ThenBy(item => OpenAiQuotaPolicy.SameQuotaScopeReroutePenalty(item, preferredAccount))
             .ThenBy(item => OpenAiQuotaPolicy.RoutingQuotaRank(item))
             .ThenBy(item => OpenAiQuotaPolicy.UsedPercentOrMax(item.FiveHourQuota))
             .ThenBy(item => OpenAiQuotaPolicy.UsedPercentOrMax(item.WeeklyQuota))

@@ -15,6 +15,11 @@ public sealed record FrontendAccountDto(
     string Name,
     string Type,
     string? Email,
+    string? WorkspaceName,
+    string? WorkspaceType,
+    string? SeatType,
+    string? QuotaScopeKey,
+    bool SharedQuotaScope,
     string? BaseUrl,
     bool IsActive,
     FrontendConnectionStatus Status,
@@ -59,7 +64,19 @@ public sealed record FrontendOAuthStateDto(
     bool IsCompleted,
     string StatusMessage,
     string? ErrorMessage,
-    string? SuccessMessage);
+    string? SuccessMessage,
+    IReadOnlyList<FrontendOAuthWorkspaceDto> Workspaces,
+    string? SelectedWorkspaceId);
+
+public sealed record FrontendOAuthWorkspaceDto(
+    string WorkspaceId,
+    string WorkspaceName,
+    string? WorkspaceType,
+    string? SeatType,
+    bool IsCurrent,
+    string DisplayLabel);
+
+public sealed record FrontendOAuthStartRequest(string? WorkspaceId);
 
 public sealed record FrontendSettingsSaveRequest(
     string CodexDesktopPath,
@@ -88,7 +105,8 @@ public sealed record FrontendEditAccountRequest(
     string? ProviderName,
     string? BaseUrl,
     string? CodexProviderId,
-    string? ApiKey);
+    string? ApiKey,
+    bool ResetTokenCount = false);
 
 public sealed record FrontendReorderAccountsRequest(
     IReadOnlyList<string> OrderedKeys);
@@ -104,4 +122,5 @@ public sealed record FrontendCompatibleProviderRequest(
 
 public sealed record FrontendOAuthCompleteRequest(
     string CallbackInput,
-    string Label);
+    string Label,
+    string? WorkspaceId = null);

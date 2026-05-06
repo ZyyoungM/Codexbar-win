@@ -63,7 +63,7 @@ try
             await LocateCodexAsync();
             break;
         case "oauth-url":
-            PrintOAuthUrl();
+            PrintOAuthUrl(args.Skip(1).ToArray());
             break;
         default:
             PrintHelp();
@@ -437,10 +437,16 @@ async Task LocateCodexAsync()
     Console.WriteLine($"cli_version: {cli?.Version ?? "(unknown)"}");
 }
 
-void PrintOAuthUrl()
+void PrintOAuthUrl(string[] commandArgs)
 {
+    var options = ParseOptions(commandArgs);
     var client = new OpenAIOAuthClient();
-    var flow = client.BeginLogin();
+    var flow = client.BeginLogin(new OAuthOptions
+    {
+        AllowedWorkspaceId = options.TryGetValue("workspace-id", out var workspaceId)
+            ? EmptyToNull(workspaceId)
+            : null
+    });
     Console.WriteLine("Open this URL in your browser:");
     Console.WriteLine(flow.AuthorizationUrl);
     Console.WriteLine();
@@ -546,16 +552,11 @@ static void PrintHelp()
     Console.WriteLine("  config set [--account-sort-mode manual|usage] [--activation-behavior write-config-only|launch-new-codex] [--openai-account-mode manual-switch|aggregate-gateway] [--codex-desktop-path <path>] [--codex-cli-path <path>]");
     Console.WriteLine("  locate-codex");
     Console.WriteLine("  oauth-url");
+    Console.WriteLine("  oauth-url --workspace-id <chatgpt_account_id>");
 }
 
 static string FormatTier(AccountRecord account)
-{
-    if (account.Tier != AccountTier.Unknown)
-    {
-        return account.Tier.ToString().ToLowerInvariant();
-    }
-
-    return string.IsNullOrWhiteSpace(account.OfficialPlanTypeRaw)
-        ? "unknown"
-        : $"unknown({account.OfficialPlanTypeRaw})";
-}
+    => OpenAiAccountDisplayFormatter.FormatTier(account) ??
+       (string.IsNullOrWhiteSpace(account.OfficialPlanTypeRaw)
+           ? "unknown"
+           : $"unknown({account.OfficialPlanTypeRaw})");

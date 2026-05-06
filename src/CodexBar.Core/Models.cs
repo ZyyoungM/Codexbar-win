@@ -59,7 +59,8 @@ public enum AccountTier
     Free,
     Go,
     Plus,
-    Pro
+    Pro,
+    Team
 }
 
 public sealed record ProviderDefinition
@@ -82,6 +83,11 @@ public sealed record AccountRecord
     public string? Email { get; init; }
     public string? SubjectId { get; init; }
     public string? OpenAiAccountId { get; init; }
+    public string? WorkspaceId { get; init; }
+    public string? WorkspaceName { get; init; }
+    public string? WorkspaceType { get; init; }
+    public string? SeatType { get; init; }
+    public string? QuotaScopeKey { get; init; }
     public AccountTier Tier { get; init; } = AccountTier.Unknown;
     public string? OfficialPlanTypeRaw { get; init; }
     public QuotaUsageSnapshot FiveHourQuota { get; init; } = new();
@@ -91,6 +97,7 @@ public sealed record AccountRecord
     public required string CredentialRef { get; init; }
     public AccountStatus Status { get; init; } = AccountStatus.Active;
     public DateTimeOffset? LastUsedAt { get; init; }
+    public DateTimeOffset? TokenCountResetAt { get; init; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public int ManualOrder { get; init; }
 }

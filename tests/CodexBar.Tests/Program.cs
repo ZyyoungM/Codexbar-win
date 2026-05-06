@@ -29,24 +29,39 @@ var tests = new (string Name, Func<Task> Run)[]
     ("compatible activation supports custom codex provider alias", CompatibleActivationCustomProviderAliasTest),
     ("compatible activation preserves oauth identity snapshot", CompatibleActivationPreservesOAuthIdentityTest),
     ("oauth activation writes codex-compatible last_refresh", OAuthActivationWritesLastRefreshTest),
+    ("oauth activation writes selected workspace account id", OAuthActivationWritesSelectedWorkspaceAccountIdTest),
+    ("openai oauth url can restrict a workspace", OpenAiOAuthUrlCanRestrictWorkspaceTest),
+    ("openai oauth token response stores chatgpt account id", OpenAiOAuthTokenResponseStoresChatGptAccountIdTest),
     ("transaction rolls back on validation failure", RollbackTest),
     ("manual callback parser accepts URL and code", ManualCallbackParserTest),
+    ("openai workspace discovery reads id token organizations", OpenAiWorkspaceDiscoveryReadsIdTokenOrganizationsTest),
+    ("openai workspace discovery reads chatgpt account list", OpenAiWorkspaceDiscoveryReadsChatGptAccountListTest),
+    ("openai workspace discovery sends codex desktop account headers", OpenAiWorkspaceDiscoverySendsCodexDesktopAccountHeadersTest),
+    ("openai workspace discovery uses selection hint for save", OpenAiWorkspaceDiscoveryUsesSelectionHintForSaveTest),
+    ("openai workspace discovery prefers chatgpt accounts over org ids", OpenAiWorkspaceDiscoveryPrefersChatGptAccountsOverOrgIdsTest),
+    ("openai workspace discovery ignores org ids when chatgpt account list is forbidden", OpenAiWorkspaceDiscoveryIgnoresOrgIdsWhenChatGptAccountListForbiddenTest),
     ("openai oauth account key avoids shared account id collisions", OpenAiOAuthAccountKeyAvoidsSharedAccountIdCollisionTest),
     ("openai oauth account key reuses matching legacy records", OpenAiOAuthAccountKeyReusesMatchingLegacyRecordTest),
     ("openai oauth account key treats subject fallback as account id", OpenAiOAuthAccountKeyTreatsSubjectFallbackAsAccountIdTest),
+    ("openai oauth account key separates same-login workspaces", OpenAiOAuthAccountKeySeparatesSameLoginWorkspacesTest),
     ("trusted frontend cors only allows known loopback origins", ApiRegressionTests.TrustedFrontendCorsTest),
     ("oauth manual fallback prefers current input over captured tokens", ApiRegressionTests.OAuthManualFallbackUsesCurrentInputTest),
     ("oauth save success resets captured state for the next login attempt", ApiRegressionTests.OAuthSuccessfulSaveResetsAttemptStateTest),
     ("oauth flow rotation cancels stale loopback listener before restarting localhost capture", ApiRegressionTests.OAuthFlowRotationCancelsPendingLoopbackListenerTest),
+    ("oauth start passes allowed workspace id", ApiRegressionTests.OAuthStartPassesAllowedWorkspaceIdTest),
+    ("oauth workspace selection restarts login without manual id", ApiRegressionTests.OAuthWorkspaceSelectionRestartsLoginWithoutManualIdTest),
+    ("oauth complete rejects allowed workspace mismatch", ApiRegressionTests.OAuthCompleteRejectsAllowedWorkspaceMismatchTest),
     ("account reorder requires complete payload coverage", ApiRegressionTests.ReorderAccountsRejectsPartialPayloadTest),
     ("account reorder accepts full payload and preserves all accounts", ApiRegressionTests.ReorderAccountsAcceptsFullPayloadTest),
     ("usage scanner reads shared history without writes", UsageScannerTest),
     ("usage scanner tolerates locked active session files", UsageScannerLockedFileTest),
+    ("usage attribution respects compatible token reset marker", UsageAttributionRespectsCompatibleTokenResetTest),
     ("compatible provider probe suggests missing v1 path", CompatibleProviderProbeSuggestsV1Test),
     ("usage attribution maps sessions by switch intervals", UsageAttributionTest),
     ("switch journal renames provider ids", SwitchJournalRenameProviderTest),
     ("aggregate gateway reroutes openai to lower-usage account", AggregateGatewayRerouteTest),
     ("aggregate gateway prefers lower official quota pressure over local history", AggregateGatewayPrefersOfficialQuotaTest),
+    ("aggregate gateway avoids same quota scope when routing for capacity", AggregateGatewayAvoidsSameQuotaScopeTest),
     ("aggregate gateway leaves manual switch selections unchanged", AggregateGatewayManualModeTest),
     ("aggregate gateway avoids accounts that need reauth when a healthy account exists", AggregateGatewayAvoidsNeedsReauthTest),
     ("desktop locator prefers desktop inferred from current cli path", DesktopLocatorPrefersCliInferredDesktopTest),
@@ -71,11 +86,15 @@ var tests = new (string Name, Func<Task> Run)[]
     ("quota formatter shows weekly reset as date unless within 24h", QuotaFormatterWeeklyResetTest),
     ("quota formatter supports inline flyout labels", QuotaFormatterInlineLabelTest),
     ("official OpenAI usage refresh maps plan and quota windows", OfficialOpenAiUsageRefreshTest),
+    ("official OpenAI usage refresh sends workspace header and stores quota scope", OfficialOpenAiUsageRefreshWorkspaceScopeTest),
+    ("official OpenAI usage refresh maps team plan", OfficialOpenAiUsageRefreshMapsTeamPlanTest),
+    ("openai account display shows team plan and workspace", OpenAiAccountDisplayShowsTeamPlanAndWorkspaceTest),
     ("official OpenAI usage refresh marks unauthorized accounts for reauth", OfficialOpenAiUsageUnauthorizedTest),
     ("session archive exports and imports shared history only", SessionArchiveExportImportTest),
     ("session archive imports conflicts without overwriting", SessionArchiveConflictImportTest),
     ("session archive rejects unsafe zip paths", SessionArchiveUnsafePathTest),
     ("account csv imports compatible secrets", AccountCsvCompatibleSecretTest),
+    ("account csv preserves oauth workspace metadata", AccountCsvOAuthWorkspaceMetadataTest),
     ("account csv exports oauth metadata without secrets by default", AccountCsvOAuthSecretSafetyTest)
 };
 
@@ -454,6 +473,119 @@ static async Task OAuthActivationWritesLastRefreshTest()
     AssertEqual(lastRefresh, writtenLastRefresh.GetDateTimeOffset());
 }
 
+static async Task OAuthActivationWritesSelectedWorkspaceAccountIdTest()
+{
+    using var temp = TempDir.Create();
+    var codexHome = Path.Combine(temp.Path, ".codex");
+    Directory.CreateDirectory(codexHome);
+
+    var appPaths = AppPaths.Resolve(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["USERPROFILE"] = temp.Path
+    });
+    var secrets = new InMemorySecretStore();
+    await secrets.WriteTokensAsync("oauth:openai:acct", new OAuthTokens
+    {
+        AccessToken = "access-token",
+        RefreshToken = "refresh-token",
+        IdToken = "id-token",
+        AccountId = "workspace-old"
+    });
+    var config = new AppConfig
+    {
+        Providers =
+        [
+            new ProviderDefinition
+            {
+                ProviderId = "openai",
+                DisplayName = "OpenAI",
+                Kind = ProviderKind.OpenAiOAuth,
+                AuthMode = AuthMode.OAuth
+            }
+        ],
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "acct",
+                Label = "Team Space",
+                OpenAiAccountId = "workspace-team",
+                WorkspaceId = "workspace-team",
+                WorkspaceName = "Team Space",
+                CredentialRef = "oauth:openai:acct"
+            }
+        ]
+    };
+
+    var result = await NewActivationService(appPaths, secrets).ActivateAsync(config, new CodexSelection
+    {
+        ProviderId = "openai",
+        AccountId = "acct"
+    }, new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CODEX_HOME"] = codexHome,
+        ["USERPROFILE"] = temp.Path
+    });
+
+    AssertTrue(result.ValidationPassed, result.Message);
+    using var auth = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(codexHome, "auth.json")));
+    var tokens = auth.RootElement.GetProperty("tokens");
+    AssertEqual("workspace-team", tokens.GetProperty("account_id").GetString());
+}
+
+static Task OpenAiOAuthUrlCanRestrictWorkspaceTest()
+{
+    var client = new OpenAIOAuthClient();
+    var flow = client.BeginLogin(new OAuthOptions
+    {
+        AuthorizationEndpoint = new Uri("https://auth.example.test/oauth/authorize", UriKind.Absolute),
+        AllowedWorkspaceId = "workspace-team"
+    });
+
+    AssertContains(flow.AuthorizationUrl.ToString(), "allowed_workspace_id=workspace-team");
+    return Task.CompletedTask;
+}
+
+static async Task OpenAiOAuthTokenResponseStoresChatGptAccountIdTest()
+{
+    var handler = new StubHttpMessageHandler(request =>
+    {
+        AssertEqual(HttpMethod.Post, request.Method);
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                $$"""
+                {
+                  "access_token": "access-token",
+                  "refresh_token": "refresh-token",
+                  "id_token": "{{CreateUnsignedJwt("""
+                    {
+                      "https://api.openai.com/auth": {
+                        "chatgpt_account_id": "workspace-team"
+                      }
+                    }
+                    """)}}"
+                }
+                """, Encoding.UTF8, "application/json")
+        };
+    });
+    var client = new OpenAIOAuthClient(new HttpClient(handler));
+    var tokens = await client.ExchangeCodeAsync(new OAuthPendingFlow
+    {
+        AuthorizationUrl = new Uri("https://auth.example.test/oauth/authorize", UriKind.Absolute),
+        State = "state",
+        CodeVerifier = "verifier",
+        RedirectUri = new Uri("http://localhost:1455/auth/callback", UriKind.Absolute),
+        Options = new OAuthOptions
+        {
+            TokenEndpoint = new Uri("https://auth.example.test/oauth/token", UriKind.Absolute)
+        }
+    }, "code");
+
+    AssertEqual("workspace-team", tokens.AccountId);
+}
+
 static async Task RollbackTest()
 {
     using var temp = TempDir.Create();
@@ -664,6 +796,70 @@ static async Task UsageAttributionTest()
     AssertEqual(30L, dashboard.Accounts.Single(account => account.AccountId == "b").Lifetime.TotalTokens);
 }
 
+static async Task UsageAttributionRespectsCompatibleTokenResetTest()
+{
+    using var temp = TempDir.Create();
+    var codexHome = Path.Combine(temp.Path, ".codex");
+    var sessions = Path.Combine(codexHome, "sessions");
+    Directory.CreateDirectory(sessions);
+
+    await File.WriteAllTextAsync(Path.Combine(sessions, "before-reset.jsonl"), """
+        {"timestamp":"2026-04-01T00:10:00Z","type":"session_meta","payload":{"timestamp":"2026-04-01T00:10:00Z"}}
+        {"timestamp":"2026-04-01T00:11:00Z","usage":{"input_tokens":100,"output_tokens":20,"cached_input_tokens":0}}
+        """);
+    await File.WriteAllTextAsync(Path.Combine(sessions, "after-reset.jsonl"), """
+        {"timestamp":"2026-04-01T02:10:00Z","type":"session_meta","payload":{"timestamp":"2026-04-01T02:10:00Z"}}
+        {"timestamp":"2026-04-01T02:11:00Z","usage":{"input_tokens":10,"output_tokens":5,"cached_input_tokens":1}}
+        """);
+
+    var env = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CODEX_HOME"] = codexHome,
+        ["USERPROFILE"] = temp.Path
+    };
+    var appPaths = AppPaths.Resolve(env);
+    var journal = new SwitchJournalStore(appPaths.SwitchJournalPath);
+    await journal.AppendEntryAsync(new SwitchJournalEntry
+    {
+        Timestamp = DateTimeOffset.Parse("2026-04-01T00:00:00Z"),
+        Selection = new CodexSelection { ProviderId = "compatible", AccountId = "default", SelectedAt = DateTimeOffset.Parse("2026-04-01T00:00:00Z") },
+        Status = "ok",
+        Message = "activated compatible"
+    });
+
+    var config = new AppConfig
+    {
+        Providers =
+        [
+            new ProviderDefinition
+            {
+                ProviderId = "compatible",
+                DisplayName = "Compatible",
+                Kind = ProviderKind.OpenAiCompatible,
+                AuthMode = AuthMode.ApiKey
+            }
+        ],
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "compatible",
+                AccountId = "default",
+                Label = "Default",
+                CredentialRef = "api-key:compatible:default",
+                TokenCountResetAt = DateTimeOffset.Parse("2026-04-01T01:00:00Z")
+            }
+        ]
+    };
+
+    var dashboard = await new UsageAttributionService(new UsageScanner(), journal)
+        .BuildDashboardAsync(config, new CodexHomeLocator().Resolve(env), DateTimeOffset.Parse("2026-04-02T00:00:00Z"));
+    var account = dashboard.Accounts.Single(item => item.ProviderId == "compatible" && item.AccountId == "default");
+
+    AssertEqual(15L, account.Last7Days.TotalTokens);
+    AssertEqual(15L, account.Lifetime.TotalTokens);
+}
+
 static async Task SwitchJournalRenameProviderTest()
 {
     using var temp = TempDir.Create();
@@ -693,10 +889,14 @@ static async Task AggregateGatewayRerouteTest()
     var codexHome = Path.Combine(temp.Path, ".codex");
     var sessions = Path.Combine(codexHome, "sessions");
     Directory.CreateDirectory(sessions);
+    var selectedAt = DateTimeOffset.Now.AddMinutes(-30);
+    var sessionStartedAt = selectedAt.AddMinutes(10);
+    var usageAt = sessionStartedAt.AddMinutes(1);
 
-    await File.WriteAllTextAsync(Path.Combine(sessions, "busy.jsonl"), """
-        {"timestamp":"2026-04-01T00:10:00Z","type":"session_meta","payload":{"timestamp":"2026-04-01T00:10:00Z"}}
-        {"timestamp":"2026-04-01T00:11:00Z","usage":{"input_tokens":100,"output_tokens":20,"cached_input_tokens":0}}
+    await File.WriteAllTextAsync(Path.Combine(sessions, "busy.jsonl"),
+        $$$"""
+        {"timestamp":"{{{sessionStartedAt:O}}}","type":"session_meta","payload":{"timestamp":"{{{sessionStartedAt:O}}}"}}
+        {"timestamp":"{{{usageAt:O}}}","usage":{"input_tokens":100,"output_tokens":20,"cached_input_tokens":0}}
         """);
 
     var env = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
@@ -712,8 +912,8 @@ static async Task AggregateGatewayRerouteTest()
     var journal = new SwitchJournalStore(appPaths.SwitchJournalPath);
     await journal.AppendEntryAsync(new SwitchJournalEntry
     {
-        Timestamp = DateTimeOffset.Parse("2026-04-01T00:00:00Z"),
-        Selection = new CodexSelection { ProviderId = "openai", AccountId = "busy", SelectedAt = DateTimeOffset.Parse("2026-04-01T00:00:00Z") },
+        Timestamp = selectedAt,
+        Selection = new CodexSelection { ProviderId = "openai", AccountId = "busy", SelectedAt = selectedAt },
         Status = "ok",
         Message = "activated busy"
     });
@@ -840,6 +1040,85 @@ static async Task AggregateGatewayPrefersOfficialQuotaTest()
     AssertTrue(decision.WasRerouted);
     AssertEqual("roomy", decision.ResolvedSelection.AccountId);
     AssertContains(decision.Message, "5h 剩余 90%");
+}
+
+static async Task AggregateGatewayAvoidsSameQuotaScopeTest()
+{
+    using var temp = TempDir.Create();
+    var codexHome = Path.Combine(temp.Path, ".codex");
+    Directory.CreateDirectory(Path.Combine(codexHome, "sessions"));
+
+    var env = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CODEX_HOME"] = codexHome,
+        ["USERPROFILE"] = temp.Path
+    };
+    var appPaths = AppPaths.Resolve(env);
+    var secrets = new InMemorySecretStore();
+    await secrets.WriteTokensAsync("oauth:openai:busy", new OAuthTokens { AccessToken = "busy-access" });
+    await secrets.WriteTokensAsync("oauth:openai:same", new OAuthTokens { AccessToken = "same-access" });
+    await secrets.WriteTokensAsync("oauth:openai:different", new OAuthTokens { AccessToken = "different-access" });
+
+    var config = new AppConfig
+    {
+        Settings = new AppSettings
+        {
+            OpenAiAccountMode = OpenAiAccountMode.AggregateGateway
+        },
+        Providers =
+        [
+            new ProviderDefinition
+            {
+                ProviderId = "openai",
+                DisplayName = "OpenAI",
+                Kind = ProviderKind.OpenAiOAuth,
+                AuthMode = AuthMode.OAuth
+            }
+        ],
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "busy",
+                Label = "Busy",
+                CredentialRef = "oauth:openai:busy",
+                QuotaScopeKey = "shared-scope",
+                FiveHourQuota = new QuotaUsageSnapshot { Used = 90, Limit = 100 },
+                WeeklyQuota = new QuotaUsageSnapshot { Used = 90, Limit = 100 },
+                ManualOrder = 1
+            },
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "same",
+                Label = "Same Scope",
+                CredentialRef = "oauth:openai:same",
+                QuotaScopeKey = "shared-scope",
+                FiveHourQuota = new QuotaUsageSnapshot { Used = 10, Limit = 100 },
+                WeeklyQuota = new QuotaUsageSnapshot { Used = 10, Limit = 100 },
+                ManualOrder = 2
+            },
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "different",
+                Label = "Different Scope",
+                CredentialRef = "oauth:openai:different",
+                QuotaScopeKey = "different-scope",
+                FiveHourQuota = new QuotaUsageSnapshot { Used = 50, Limit = 100 },
+                WeeklyQuota = new QuotaUsageSnapshot { Used = 50, Limit = 100 },
+                ManualOrder = 3
+            }
+        ]
+    };
+
+    var decision = await new OpenAiAggregateGatewayService(appPaths, secrets)
+        .ResolveSelectionAsync(config, new CodexSelection { ProviderId = "openai", AccountId = "busy" }, env);
+
+    AssertTrue(decision.WasRerouted);
+    AssertEqual("different", decision.ResolvedSelection.AccountId);
+    AssertContains(decision.Message, "Different Scope");
 }
 
 static async Task AggregateGatewayManualModeTest()
@@ -1402,6 +1681,289 @@ static Task OpenAiOAuthAccountKeyAvoidsSharedAccountIdCollisionTest()
     return Task.CompletedTask;
 }
 
+static Task OpenAiWorkspaceDiscoveryReadsIdTokenOrganizationsTest()
+{
+    var tokens = new OAuthTokens
+    {
+        AccessToken = "access-token",
+        AccountId = "acct-team",
+        IdToken = CreateUnsignedJwt("""
+            {
+              "sub": "user-sub",
+              "email": "me@example.test",
+              "organizations": [
+                {
+                  "account_id": "acct-personal",
+                  "name": "Personal",
+                  "type": "personal",
+                  "seat_type": "owner",
+                  "quota_scope_key": "quota-personal"
+                },
+                {
+                  "account_id": "acct-team",
+                  "name": "Research Team",
+                  "type": "business",
+                  "seat_type": "member",
+                  "quota_scope_key": "quota-team"
+                }
+              ]
+            }
+            """)
+    };
+    var identity = OAuthIdentityExtractor.Extract(tokens);
+
+    var workspaces = OpenAiWorkspaceDiscovery.Discover(tokens, identity).ToList();
+    var personal = workspaces.Single(workspace => workspace.WorkspaceId == "acct-personal");
+    var team = workspaces.Single(workspace => workspace.WorkspaceId == "acct-team");
+
+    AssertEqual(2, workspaces.Count);
+    AssertEqual("Personal", personal.WorkspaceName);
+    AssertEqual("personal", personal.WorkspaceType);
+    AssertEqual("owner", personal.SeatType);
+    AssertEqual("quota-personal", personal.QuotaScopeKey);
+    AssertEqual("Research Team", team.WorkspaceName);
+    AssertTrue(team.IsCurrent);
+    return Task.CompletedTask;
+}
+
+static async Task OpenAiWorkspaceDiscoveryReadsChatGptAccountListTest()
+{
+    string? sentAuthorization = null;
+    var handler = new StubHttpMessageHandler(request =>
+    {
+        sentAuthorization = request.Headers.Authorization?.Scheme;
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """
+                {
+                  "items": [
+                    {
+                      "id": "workspace-account",
+                      "name": "Work",
+                      "structure": "workspace",
+                      "current_user_role": "standard-user"
+                    },
+                    {
+                      "id": "personal-account",
+                      "name": null,
+                      "structure": "personal",
+                      "current_user_role": "account-owner"
+                    }
+                  ]
+                }
+                """, Encoding.UTF8, "application/json")
+        };
+    });
+
+    var workspaces = await OpenAiWorkspaceDiscovery.DiscoverAsync(
+        new OAuthTokens
+        {
+            AccessToken = "access-token",
+            AccountId = "personal-account"
+        },
+        new OAuthIdentity("same-sub", "me@example.test", null),
+        new HttpClient(handler));
+
+    var work = workspaces.Single(workspace => workspace.WorkspaceId == "workspace-account");
+    var personal = workspaces.Single(workspace => workspace.WorkspaceId == "personal-account");
+
+    AssertEqual("Bearer", sentAuthorization);
+    AssertEqual("Work", work.WorkspaceName);
+    AssertEqual("workspace", work.WorkspaceType);
+    AssertEqual("standard-user", work.SeatType);
+    AssertTrue(!work.IsCurrent);
+    AssertEqual("Personal", personal.WorkspaceName);
+    AssertEqual("personal", personal.WorkspaceType);
+    AssertEqual("account-owner", personal.SeatType);
+    AssertTrue(personal.IsCurrent);
+}
+
+static async Task OpenAiWorkspaceDiscoverySendsCodexDesktopAccountHeadersTest()
+{
+    string? sentOriginator = null;
+    string? sentAccountHeader = null;
+    string? sentUserAgent = null;
+    var handler = new StubHttpMessageHandler(request =>
+    {
+        sentOriginator = request.Headers.TryGetValues("originator", out var originatorValues)
+            ? originatorValues.SingleOrDefault()
+            : null;
+        sentAccountHeader = request.Headers.TryGetValues("ChatGPT-Account-Id", out var accountValues)
+            ? accountValues.SingleOrDefault()
+            : null;
+        sentUserAgent = request.Headers.UserAgent.ToString();
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """
+                {
+                  "items": [
+                    {
+                      "id": "workspace-account",
+                      "name": "Work",
+                      "structure": "workspace",
+                      "current_user_role": "standard-user"
+                    }
+                  ]
+                }
+                """, Encoding.UTF8, "application/json")
+        };
+    });
+
+    await OpenAiWorkspaceDiscovery.DiscoverAsync(
+        new OAuthTokens
+        {
+            AccessToken = "access-token",
+            IdToken = CreateUnsignedJwt("""
+                {
+                  "https://api.openai.com/auth": {
+                    "chatgpt_account_id": "workspace-account"
+                  }
+                }
+                """)
+        },
+        new OAuthIdentity("same-sub", "me@example.test", null),
+        new HttpClient(handler));
+
+    AssertEqual("Codex Desktop", sentOriginator);
+    AssertEqual("workspace-account", sentAccountHeader);
+    AssertContains(sentUserAgent ?? "", "Codex");
+}
+
+static async Task OpenAiWorkspaceDiscoveryUsesSelectionHintForSaveTest()
+{
+    var handler = new StubHttpMessageHandler(_ =>
+        new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("forbidden", Encoding.UTF8, "text/plain")
+        });
+    var tokens = new OAuthTokens
+    {
+        AccessToken = "access-token",
+        AccountId = "org-team",
+        IdToken = CreateUnsignedJwt("""
+            {
+              "https://api.openai.com/auth": {
+                "chatgpt_account_id": "org-team",
+                "chatgpt_plan_type": "plus"
+              }
+            }
+            """)
+    };
+    var hint = new OpenAiWorkspaceDescriptor(
+        "org-team",
+        "Work",
+        "workspace",
+        "member",
+        "team-scope",
+        false);
+
+    var workspace = await OpenAiWorkspaceDiscovery.ResolveCurrentForSaveAsync(
+        tokens,
+        OAuthIdentityExtractor.Extract(tokens),
+        hint,
+        new HttpClient(handler));
+
+    AssertEqual("org-team", workspace.WorkspaceId);
+    AssertEqual("Work", workspace.WorkspaceName);
+    AssertEqual("workspace", workspace.WorkspaceType);
+    AssertEqual("member", workspace.SeatType);
+    AssertEqual("team-scope", workspace.QuotaScopeKey);
+}
+
+static async Task OpenAiWorkspaceDiscoveryPrefersChatGptAccountsOverOrgIdsTest()
+{
+    var handler = new StubHttpMessageHandler(_ =>
+        new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """
+                {
+                  "items": [
+                    {
+                      "id": "workspace-account",
+                      "name": "Work",
+                      "structure": "workspace",
+                      "current_user_role": "standard-user"
+                    },
+                    {
+                      "id": "personal-account",
+                      "name": null,
+                      "structure": "personal",
+                      "current_user_role": "account-owner"
+                    }
+                  ]
+                }
+                """, Encoding.UTF8, "application/json")
+        });
+
+    var workspaces = await OpenAiWorkspaceDiscovery.DiscoverAsync(
+        new OAuthTokens
+        {
+            AccessToken = "access-token",
+            AccountId = "org-personal",
+            IdToken = CreateUnsignedJwt("""
+                {
+                  "https://api.openai.com/auth": {
+                    "chatgpt_account_id": "personal-account",
+                    "organizations": [
+                      {
+                        "id": "org-personal",
+                        "title": "Personal",
+                        "role": "owner"
+                      }
+                    ]
+                  }
+                }
+                """)
+        },
+        new OAuthIdentity("same-sub", "me@example.test", null),
+        new HttpClient(handler));
+
+    AssertEqual(2, workspaces.Count);
+    AssertTrue(workspaces.All(workspace => workspace.WorkspaceId != "org-personal"));
+    AssertTrue(workspaces.Single(workspace => workspace.WorkspaceId == "personal-account").IsCurrent);
+    AssertTrue(!workspaces.Single(workspace => workspace.WorkspaceId == "workspace-account").IsCurrent);
+}
+
+static async Task OpenAiWorkspaceDiscoveryIgnoresOrgIdsWhenChatGptAccountListForbiddenTest()
+{
+    var handler = new StubHttpMessageHandler(_ =>
+        new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("forbidden", Encoding.UTF8, "text/plain")
+        });
+
+    var workspaces = await OpenAiWorkspaceDiscovery.DiscoverAsync(
+        new OAuthTokens
+        {
+            AccessToken = "access-token",
+            AccountId = "workspace-team",
+            IdToken = CreateUnsignedJwt("""
+                {
+                  "https://api.openai.com/auth": {
+                    "chatgpt_account_id": "workspace-team",
+                    "chatgpt_plan_type": "business",
+                    "organizations": [
+                      {
+                        "id": "org-personal",
+                        "title": "Personal",
+                        "role": "owner"
+                      }
+                    ]
+                  }
+                }
+                """)
+        },
+        new OAuthIdentity("same-sub", "me@example.test", null),
+        new HttpClient(handler));
+
+    AssertEqual(1, workspaces.Count);
+    AssertEqual("workspace-team", workspaces.Single().WorkspaceId);
+    AssertTrue(workspaces.Single().IsCurrent);
+}
+
 static Task OpenAiOAuthAccountKeyReusesMatchingLegacyRecordTest()
 {
     var config = new AppConfig
@@ -1458,6 +2020,40 @@ static Task OpenAiOAuthAccountKeyTreatsSubjectFallbackAsAccountIdTest()
         new OAuthIdentity("acct-only", null, null));
 
     AssertEqual("acct-only", accountId);
+    return Task.CompletedTask;
+}
+
+static Task OpenAiOAuthAccountKeySeparatesSameLoginWorkspacesTest()
+{
+    var config = new AppConfig
+    {
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "oauth-personal",
+                Label = "me@example.test - Personal",
+                Email = "me@example.test",
+                SubjectId = "same-sub",
+                OpenAiAccountId = "acct-personal",
+                WorkspaceId = "acct-personal",
+                CredentialRef = "oauth:openai:oauth-personal"
+            }
+        ]
+    };
+
+    var accountId = OpenAiOAuthAccountKey.ResolveAccountId(
+        config,
+        new OAuthTokens
+        {
+            AccessToken = "team-access",
+            AccountId = "acct-team"
+        },
+        new OAuthIdentity("same-sub", "me@example.test", null));
+
+    AssertTrue(!string.Equals("oauth-personal", accountId, StringComparison.Ordinal));
+    AssertTrue(accountId.StartsWith("oauth-", StringComparison.Ordinal));
     return Task.CompletedTask;
 }
 
@@ -1646,6 +2242,137 @@ static async Task OfficialOpenAiUsageRefreshTest()
     AssertEqual(604800, account.WeeklyQuota.WindowSeconds);
     AssertTrue(account.OfficialUsageFetchedAt.HasValue);
     AssertTrue(string.IsNullOrWhiteSpace(account.OfficialUsageError));
+}
+
+static async Task OfficialOpenAiUsageRefreshWorkspaceScopeTest()
+{
+    var secrets = new InMemorySecretStore();
+    await secrets.WriteTokensAsync("oauth:openai:acct", new OAuthTokens
+    {
+        AccessToken = "access-token",
+        AccountId = "token-default"
+    });
+
+    string? sentWorkspaceHeader = null;
+    var handler = new StubHttpMessageHandler(request =>
+    {
+        sentWorkspaceHeader = request.Headers.TryGetValues("ChatGPT-Account-Id", out var values)
+            ? values.SingleOrDefault()
+            : null;
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""
+                {
+                  "plan_type": "business",
+                  "quota_scope_key": "shared-team-scope",
+                  "rate_limit": {
+                    "primary_window": {
+                      "used_percent": 20,
+                      "limit_window_seconds": 18000,
+                      "reset_after_seconds": 600
+                    },
+                    "secondary_window": {
+                      "used_percent": 40,
+                      "limit_window_seconds": 604800,
+                      "reset_after_seconds": 3600
+                    }
+                  }
+                }
+                """, Encoding.UTF8, "application/json")
+        };
+    });
+    var service = new OpenAiOfficialUsageService(secrets, new HttpClient(handler));
+    var config = new AppConfig
+    {
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "acct",
+                Label = "Team",
+                WorkspaceId = "workspace-team",
+                CredentialRef = "oauth:openai:acct"
+            }
+        ]
+    };
+
+    var refresh = await service.RefreshAsync(config, TimeSpan.Zero);
+    var account = refresh.Config.Accounts.Single();
+
+    AssertEqual("workspace-team", sentWorkspaceHeader);
+    AssertEqual("shared-team-scope", account.QuotaScopeKey);
+    AssertEqual("workspace-team", account.WorkspaceId);
+}
+
+static async Task OfficialOpenAiUsageRefreshMapsTeamPlanTest()
+{
+    var secrets = new InMemorySecretStore();
+    await secrets.WriteTokensAsync("oauth:openai:acct", new OAuthTokens
+    {
+        AccessToken = "access-token",
+        AccountId = "team-account"
+    });
+
+    var handler = new StubHttpMessageHandler(_ =>
+        new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""
+                {
+                  "plan_type": "team",
+                  "rate_limit": {
+                    "primary_window": {
+                      "used_percent": 43,
+                      "limit_window_seconds": 18000,
+                      "reset_after_seconds": 600
+                    },
+                    "secondary_window": {
+                      "used_percent": 7,
+                      "limit_window_seconds": 604800,
+                      "reset_after_seconds": 3600
+                    }
+                  }
+                }
+                """, Encoding.UTF8, "application/json")
+        });
+    var service = new OpenAiOfficialUsageService(secrets, new HttpClient(handler));
+    var config = new AppConfig
+    {
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "acct",
+                Label = "Team",
+                CredentialRef = "oauth:openai:acct"
+            }
+        ]
+    };
+
+    var refresh = await service.RefreshAsync(config, TimeSpan.Zero);
+    var account = refresh.Config.Accounts.Single();
+
+    AssertEqual(AccountTier.Team, account.Tier);
+    AssertEqual("team", OpenAiAccountDisplayFormatter.FormatTier(account));
+}
+
+static Task OpenAiAccountDisplayShowsTeamPlanAndWorkspaceTest()
+{
+    var account = new AccountRecord
+    {
+        ProviderId = "openai",
+        AccountId = "acct",
+        Label = "me@example.test · Personal",
+        Email = "me@example.test",
+        WorkspaceName = "Personal",
+        OfficialPlanTypeRaw = "team",
+        CredentialRef = "oauth:openai:acct"
+    };
+
+    AssertEqual("team", OpenAiAccountDisplayFormatter.FormatTier(account));
+    AssertEqual("Team", OpenAiAccountDisplayFormatter.EffectiveWorkspaceName(account));
+    return Task.CompletedTask;
 }
 
 static async Task OfficialOpenAiUsageUnauthorizedTest()
@@ -1863,6 +2590,64 @@ static async Task AccountCsvCompatibleSecretTest()
     AssertEqual("sk-secret", await targetSecrets.ReadSecretAsync("api-key:provider:acct"));
 }
 
+static async Task AccountCsvOAuthWorkspaceMetadataTest()
+{
+    using var temp = TempDir.Create();
+    var secrets = new InMemorySecretStore();
+    var config = new AppConfig
+    {
+        Providers =
+        [
+            new ProviderDefinition
+            {
+                ProviderId = "openai",
+                DisplayName = "OpenAI",
+                Kind = ProviderKind.OpenAiOAuth,
+                AuthMode = AuthMode.OAuth
+            }
+        ],
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "acct",
+                Label = "me@example.test - Research",
+                Email = "me@example.test",
+                SubjectId = "subject",
+                OpenAiAccountId = "workspace-account",
+                WorkspaceId = "workspace-account",
+                WorkspaceName = "Research",
+                WorkspaceType = "business",
+                SeatType = "member",
+                QuotaScopeKey = "shared-scope",
+                TokenCountResetAt = DateTimeOffset.Parse("2026-04-01T01:00:00Z"),
+                CredentialRef = "oauth:openai:acct",
+                ManualOrder = 4
+            }
+        ]
+    };
+
+    var csv = Path.Combine(temp.Path, "workspace.csv");
+    await new AccountCsvService(secrets, secrets).ExportAsync(config, csv);
+    var text = await File.ReadAllTextAsync(csv);
+    AssertContains(text, "workspace_id");
+    AssertContains(text, "Research");
+    AssertContains(text, "shared-scope");
+
+    var (importedConfig, result) = await new AccountCsvService(secrets, secrets)
+        .ImportAsync(AppConfigStore.DefaultConfig(), csv);
+    var account = importedConfig.Accounts.Single(account => account.ProviderId == "openai");
+
+    AssertEqual(1, result.AccountsImported);
+    AssertEqual("workspace-account", account.WorkspaceId);
+    AssertEqual("Research", account.WorkspaceName);
+    AssertEqual("business", account.WorkspaceType);
+    AssertEqual("member", account.SeatType);
+    AssertEqual("shared-scope", account.QuotaScopeKey);
+    AssertEqual(DateTimeOffset.Parse("2026-04-01T01:00:00Z"), account.TokenCountResetAt);
+}
+
 static async Task AccountCsvOAuthSecretSafetyTest()
 {
     using var temp = TempDir.Create();
@@ -1909,6 +2694,19 @@ static async Task AccountCsvOAuthSecretSafetyTest()
     var secretText = await File.ReadAllTextAsync(withSecrets);
     AssertContains(secretText, "access-secret");
     AssertContains(secretText, "refresh-secret");
+}
+
+static string CreateUnsignedJwt(string payloadJson)
+{
+    static string Base64Url(byte[] bytes)
+        => Convert.ToBase64String(bytes)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+    var header = Base64Url(Encoding.UTF8.GetBytes("""{"alg":"none","typ":"JWT"}"""));
+    var payload = Base64Url(Encoding.UTF8.GetBytes(payloadJson));
+    return $"{header}.{payload}.";
 }
 
 static CodexActivationService NewActivationService(AppPaths appPaths, InMemorySecretStore secrets)

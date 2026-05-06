@@ -7,6 +7,7 @@ public sealed record OAuthOptions
     public Uri TokenEndpoint { get; init; } = new("https://auth.openai.com/oauth/token");
     public Uri RedirectUri { get; init; } = new("http://localhost:1455/auth/callback");
     public string Scope { get; init; } = "openid profile email offline_access api.connectors.read api.connectors.invoke";
+    public string? AllowedWorkspaceId { get; init; }
 }
 
 public sealed record OAuthPendingFlow

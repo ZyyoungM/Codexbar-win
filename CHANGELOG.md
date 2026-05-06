@@ -1,5 +1,14 @@
 # 更新日志
 
+## v0.3.4
+
+- OpenAI OAuth 账号现在按 ChatGPT/Codex workspace 保存，同一登录邮箱下的 Personal / Team / Business / Enterprise / Edu 空间可同时收纳、展示和切换，不再只保留最后一次 OAuth 结果。
+- OAuth 登录窗口支持发现并选择 workspace；如果官方只回当前空间，仍保留当前 workspace，并支持后续再次授权添加其它空间。
+- 激活和官方额度刷新会使用目标 workspace/account id，刷新请求带 `ChatGPT-Account-Id`，并保存 workspace 名称、类型、seat、quota scope 等元数据。
+- 官方额度与账号卡片新增 Team 套餐识别、workspace 显示名和共享额度池标记；聚合路由避免把同一 quota scope 当作新增独立额度。
+- 账号 CSV 导入 / 导出保留 workspace 元数据与本地 token 计数重置时间，默认仍不导出 OAuth token 或 API Key。
+- 第三方兼容 API 的编辑账号窗口新增“重置 token 计数”，只重置 CodexBar 本地 usage 归因起点，不删除或改写 shared `.codex` 的 `sessions` / `archived_sessions`。
+
 ## v0.3.3
 
 - 优化主浮窗信息密度：顶部高频操作收敛为一行工具栏，保留明确 tooltip，并移除底部兼容性说明卡片。

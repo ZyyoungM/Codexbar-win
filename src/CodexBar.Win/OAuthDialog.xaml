@@ -142,6 +142,22 @@
                      MinHeight="86"
                      TextWrapping="Wrap"
                      AcceptsReturn="True" />
+            <Expander Header="Advanced"
+                      Margin="0,10,0,0"
+                      Foreground="#605E5C"
+                      FontSize="11">
+              <StackPanel Margin="0,8,0,0">
+                <TextBlock Text="Workspace ID (optional)"
+                           Style="{StaticResource FieldLabel}" />
+                <TextBox x:Name="AllowedWorkspaceBox"
+                         Style="{StaticResource InputTextBox}"
+                         TextChanged="AllowedWorkspaceBox_TextChanged" />
+                <TextBlock Margin="0,8,0,0"
+                           Foreground="#8A8886"
+                           FontSize="10"
+                           Text="Fallback only. Normally choose a readable workspace after OAuth and CodexBar will reopen the browser automatically." />
+              </StackPanel>
+            </Expander>
             <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
               <Button x:Name="OpenBrowserButton"
                       Content="打开浏览器"
@@ -182,6 +198,21 @@
                          TextWrapping="Wrap"
                          Text="点击“打开浏览器”开始授权，或先手动开始监听回调。" />
             </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <Border x:Name="WorkspacePanel"
+                Style="{StaticResource SectionCard}"
+                Visibility="Collapsed">
+          <StackPanel>
+            <TextBlock Text="Workspace"
+                       Style="{StaticResource SectionTitle}" />
+            <TextBlock Text="This OpenAI login can access multiple ChatGPT/Codex workspaces. Choose the workspace to save and activate."
+                       Style="{StaticResource FieldLabel}"
+                       TextWrapping="Wrap" />
+            <ComboBox x:Name="WorkspaceBox"
+                      Height="34"
+                      DisplayMemberPath="DisplayLabel" />
           </StackPanel>
         </Border>
 

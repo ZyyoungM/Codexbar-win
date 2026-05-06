@@ -15,6 +15,7 @@ public sealed record OpenAiOfficialUsageRefreshResult(
 public sealed record OpenAiOfficialUsageSnapshot(
     AccountTier Tier,
     string? RawPlanType,
+    string? QuotaScopeKey,
     QuotaUsageSnapshot FiveHourQuota,
     QuotaUsageSnapshot WeeklyQuota);
 
@@ -131,6 +132,7 @@ public sealed class OpenAiOfficialUsageService
         return new OpenAiOfficialUsageSnapshot(
             MapTier(payload.PlanType),
             payload.PlanType,
+            EmptyToNull(payload.QuotaScopeKey),
             ToQuotaSnapshot(fiveHour, now),
             ToQuotaSnapshot(weekly, now));
     }
@@ -166,16 +168,21 @@ public sealed class OpenAiOfficialUsageService
                 };
             }
 
-            var snapshot = await FetchAsync(tokens, cancellationToken);
+            var workspaceTokens = ApplyWorkspaceContext(tokens, account);
+            var snapshot = await FetchAsync(workspaceTokens, cancellationToken);
+            var workspaceId = OpenAiQuotaPolicy.EffectiveOpenAiWorkspaceId(account) ??
+                              OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(workspaceTokens);
             return account with
             {
                 Tier = snapshot.Tier,
                 OfficialPlanTypeRaw = snapshot.RawPlanType,
+                QuotaScopeKey = snapshot.QuotaScopeKey ?? account.QuotaScopeKey,
                 FiveHourQuota = snapshot.FiveHourQuota,
                 WeeklyQuota = snapshot.WeeklyQuota,
                 OfficialUsageFetchedAt = fetchedAt,
                 OfficialUsageError = null,
-                OpenAiAccountId = account.OpenAiAccountId ?? OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens),
+                OpenAiAccountId = account.OpenAiAccountId ?? workspaceId,
+                WorkspaceId = account.WorkspaceId ?? workspaceId,
                 Status = account.Status == AccountStatus.NeedsReauth ? AccountStatus.Active : account.Status
             };
         }
@@ -186,6 +193,7 @@ public sealed class OpenAiOfficialUsageService
                 OfficialUsageFetchedAt = fetchedAt,
                 OfficialUsageError = "Official quota fetch was unauthorized. Re-auth may be required.",
                 OpenAiAccountId = account.OpenAiAccountId ?? (tokens is null ? null : OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens)),
+                WorkspaceId = account.WorkspaceId ?? account.OpenAiAccountId ?? (tokens is null ? null : OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens)),
                 Status = AccountStatus.NeedsReauth
             };
         }
@@ -195,6 +203,7 @@ public sealed class OpenAiOfficialUsageService
             {
                 OfficialUsageFetchedAt = fetchedAt,
                 OpenAiAccountId = account.OpenAiAccountId ?? (tokens is null ? null : OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens)),
+                WorkspaceId = account.WorkspaceId ?? account.OpenAiAccountId ?? (tokens is null ? null : OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens)),
                 OfficialUsageError = $"Official quota fetch failed: {SanitizeError(ex.Message)}"
             };
         }
@@ -203,6 +212,15 @@ public sealed class OpenAiOfficialUsageService
     private static bool IsOfficiallyManagedOpenAiAccount(AccountRecord account)
         => string.Equals(account.ProviderId, "openai", StringComparison.OrdinalIgnoreCase) &&
            account.CredentialRef.StartsWith("oauth:", StringComparison.OrdinalIgnoreCase);
+
+    private static OAuthTokens ApplyWorkspaceContext(OAuthTokens tokens, AccountRecord account)
+    {
+        var workspaceId = OpenAiQuotaPolicy.EffectiveOpenAiWorkspaceId(account);
+        return string.IsNullOrWhiteSpace(workspaceId) ||
+               string.Equals(tokens.AccountId, workspaceId, StringComparison.OrdinalIgnoreCase)
+            ? tokens
+            : tokens with { AccountId = workspaceId };
+    }
 
     private static HttpClient CreateHttpClient()
         => new()
@@ -248,27 +266,7 @@ public sealed class OpenAiOfficialUsageService
             return AccountTier.Unknown;
         }
 
-        var normalized = NormalizePlanType(rawPlanType);
-        return normalized switch
-        {
-            "free" => AccountTier.Free,
-            "go" => AccountTier.Go,
-            "plus" => AccountTier.Plus,
-            "pro" => AccountTier.Pro,
-            _ => AccountTier.Unknown
-        };
-    }
-
-    private static string NormalizePlanType(string value)
-    {
-        var normalized = new string(value
-            .Where(char.IsLetterOrDigit)
-            .Select(char.ToLowerInvariant)
-            .ToArray());
-
-        return normalized.StartsWith("chatgpt", StringComparison.Ordinal)
-            ? normalized["chatgpt".Length..]
-            : normalized;
+        return OpenAiAccountDisplayFormatter.MapPlanToTier(rawPlanType);
     }
 
     private static string SanitizeError(string message)
@@ -283,12 +281,18 @@ public sealed class OpenAiOfficialUsageService
             .Trim();
     }
 
+    private static string? EmptyToNull(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
     private sealed class OpenAiOfficialUsageUnauthorizedException : Exception;
 
     private sealed record UsageResponse
     {
         [JsonPropertyName("plan_type")]
         public string? PlanType { get; init; }
+
+        [JsonPropertyName("quota_scope_key")]
+        public string? QuotaScopeKey { get; init; }
 
         [JsonPropertyName("rate_limit")]
         public RateLimitResponse? RateLimit { get; init; }

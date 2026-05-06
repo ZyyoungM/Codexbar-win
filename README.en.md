@@ -3,7 +3,7 @@
 
 # CodexBar for Windows
 
-Current version: `v0.3.3`
+Current version: `v0.3.4`
 
 CodexBar for Windows is a Windows-native port of the macOS project [`lizhelang/codexbar`](https://github.com/lizhelang/codexbar). The goal is not to rebuild Codex itself, but to provide a smoother Windows entry point for switching accounts and providers while letting you manage official OpenAI accounts and third-party compatible APIs **without splitting the local `.codex` history pool**.
 
@@ -33,11 +33,11 @@ The day-to-day experience of CodexBar for Windows mainly revolves around two UI 
 
 ### Option 1: Recommended portable package (download and run)
 
-If you just want to use CodexBar directly, the recommended path is to download `CodexBar-portable-win-x64-v0.3.3.zip` from the release page.
+If you just want to use CodexBar directly, the recommended path is to download `CodexBar-portable-win-x64-v0.3.4.zip` from the release page.
 
 After downloading the archive, you can get started in 3 steps:
 
-1. Extract `CodexBar-portable-win-x64-v0.3.3.zip`
+1. Extract `CodexBar-portable-win-x64-v0.3.4.zip`
 2. Open the extracted folder
 3. Double-click `start-codexbar.cmd`
 
@@ -109,8 +109,9 @@ This is the most important behavior boundary of the project:
 1. Open Settings
 2. Choose Sign in with OpenAI
 3. Complete the OAuth authorization flow in the browser
-4. Return to CodexBar, select the target account, and activate it
-5. Launch Codex from CodexBar
+4. If multiple workspaces are discovered under the same login identity, choose the target Personal / Team / Business / Enterprise / Edu workspace in CodexBar
+5. Return to CodexBar, select the target account / workspace, and activate it
+6. Launch Codex from CodexBar
 
 If the browser callback does not complete automatically, you can still use the manual callback URL / `code` fallback.
 
@@ -136,6 +137,7 @@ The current version supports:
 
 - Local usage scanning: today / last 7 days / last 30 days / lifetime
 - Read-only refresh of official OpenAI plan and remaining quota information
+- Workspaces under the same OpenAI login are displayed separately and are not summed across cards; if OpenAI returns the same quota scope, CodexBar marks them as a shared quota pool
 
 These numbers are meant to help you decide which account to switch to, not to serve as a precise billing system.
 
@@ -181,6 +183,13 @@ The Windows porting work in this project builds on the product direction and imp
 ## Version Summary
 
 `README.md` only keeps a short summary of changes relative to the previous version. For full details, see [CHANGELOG.md](./CHANGELOG.md).
+
+### v0.3.4 - 2026-05-06
+
+- OpenAI OAuth accounts are now saved at the ChatGPT/Codex workspace level, so Personal / Team / Business / Enterprise / Edu spaces under the same email can coexist, display, and switch independently
+- Official quota refresh uses the target workspace/account id and displays Team plans, workspace names, and shared quota pool status without summing quota across workspaces
+- Compatible-provider account editing now includes a token-count reset action that only moves CodexBar's local usage attribution start point and never rewrites shared `.codex` history
+- Account CSV import/export preserves workspace metadata and the local token-count reset marker while still excluding tokens and keys by default
 
 ### v0.3.3 - 2026-04-25
 

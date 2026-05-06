@@ -48,7 +48,9 @@ public static class OpenAiOAuthAccountKey
         var emailMatches = TextEquals(account.Email, email);
         var openAiAccountMatches =
             TextEquals(account.OpenAiAccountId, openAiAccountId) ||
+            TextEquals(account.WorkspaceId, openAiAccountId) ||
             (string.IsNullOrWhiteSpace(account.OpenAiAccountId) &&
+             string.IsNullOrWhiteSpace(account.WorkspaceId) &&
              TextEquals(account.AccountId, openAiAccountId));
 
         if (subjectId is not null && openAiAccountId is not null)

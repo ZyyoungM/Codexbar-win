@@ -1,6 +1,6 @@
 # CodexBar Windows Implementation Progress
 
-Last updated: 2026-04-25
+Last updated: 2026-05-06
 
 This file is the project progress ledger. Whenever a feature is added, changed, removed, or meaningfully fixed, update this document in the same change.
 
@@ -35,17 +35,18 @@ The current implementation is a working MVP with a native tray-window model (`Ma
 | OpenAI OAuth browser flow | `[x]` | PKCE, browser auth, localhost callback capture, and manual callback/code fallback are wired. Successful saves now rotate to a fresh OAuth attempt, explicitly cancel and release any stale `localhost:1455` listener before starting the next flow, full callback URLs must match the current `state`, and manual fallback always prefers the current pasted input over stale captured tokens. |
 | OpenAI OAuth account naming | `[x]` | Account label/email/sub are backfilled from `id_token` when available. |
 | Local API browser CORS boundary | `[x]` | Cross-origin browser access is limited to trusted loopback origins only: the API self-host origin plus the frontend rebuild dev/preview origins on ports `5173` and `4173`. Arbitrary external pages cannot read or mutate the local API. |
-| OpenAI official plan / quota snapshot | `[~]` | Read-only refresh works for OAuth accounts. UI shows remaining quota, next reset time, refresh timestamp, and refresh failures. Source endpoint is official-hosted but undocumented. |
+| OpenAI official plan / quota snapshot | `[~]` | Read-only refresh works for OAuth accounts. UI shows remaining quota, next reset time, refresh timestamp, refresh failures, Team plan labels, and shared quota-scope hints. Source endpoint is official-hosted but undocumented. |
 | Multiple OpenAI OAuth accounts | `[x]` | Multiple OpenAI OAuth accounts can be stored, displayed, switched, and re-activated. |
+| OpenAI workspace switching | `[x]` | OpenAI OAuth account records now retain ChatGPT/Codex workspace metadata (`workspace_id`, workspace name/type, seat type, and quota scope). Activation and quota refresh use the selected workspace/account id without splitting the shared `.codex` history pool, and the OAuth dialog can choose among discovered workspaces. |
 | OpenAI-compatible providers | `[x]` | Provider ID/name/base URL plus account/API key are supported. Activation writes Codex-native provider config and `apikey` auth, launched Codex child processes receive the active compatible key as `OPENAI_API_KEY`, compatible activation preserves the existing OAuth identity snapshot when available, and compatible providers can map their Codex-facing provider ID to `openai` for Desktop history filtering via `openai_base_url` without overriding reserved built-ins. |
 | Multiple API keys under same provider | `[x]` | Supported by reusing provider ID with different account IDs. |
 | Compatible Provider connectivity probe | `[x]` | Main flyout and CLI can probe compatible accounts through `/models` and suggest a missing `/v1` Base URL when detected. |
-| Account edit UI | `[x]` | Temporary UI can edit labels; compatible providers can edit internal Provider ID, Codex Provider ID, name, base URL, and API key. |
+| Account edit UI | `[x]` | Temporary UI can edit labels; compatible providers can edit internal Provider ID, Codex Provider ID, name, base URL, API key, and reset CodexBar's local token-count attribution start point. |
 | Manual account ordering | `[x]` | `ManualOrder` is persisted and temporary UI supports Up/Down. Reorder writes now require a complete, non-duplicate account set so partial/stale payloads cannot silently drop omitted accounts. |
 | Usage-based ordering | `[~]` | Ordering prefers official OpenAI quota pressure when present, then local usage history. Attribution still depends on recorded successful switch journal entries. |
-| CSV export/import | `[x]` | Backend and native Settings popup both exist. Default export excludes secrets; explicit secret export is supported. |
+| CSV export/import | `[x]` | Backend and native Settings popup both exist. Default export excludes secrets; explicit secret export is supported. OpenAI workspace metadata and compatible-provider token reset markers round-trip. |
 | Windows Credential Manager | `[x]` | API keys and OAuth tokens are persisted through Credential Manager. |
-| Local usage scanner | `[~]` | Scans `sessions` and `archived_sessions`, exposes Today / Last 7 Days / Last 30 Days / Lifetime totals, attributes sessions by switch intervals, and auto-refreshes every minute while the main flyout is open. Cost pricing is still placeholder. |
+| Local usage scanner | `[~]` | Scans `sessions` and `archived_sessions`, exposes Today / Last 7 Days / Last 30 Days / Lifetime totals, attributes sessions by switch intervals, honors compatible-provider token reset markers, and auto-refreshes every minute while the main flyout is open. Cost pricing is still placeholder. |
 | Locked session file handling | `[x]` | Scanner uses shared read and skips unreadable active files. |
 | Tray host | `[~]` | Tray host now coordinates left-click main flyout, right-click menu actions, direct overlay toggling, and warm-start command handoff. Quick account/API switching is nested under a submenu so long account labels do not clip the top-level menu. Icon/art and packaging still need work. |
 | Native window hierarchy | `[x]` | `CodexBar.Win` now uses an explicit native surface model: tray host, `MainFlyout`, independent `Overlay`, and separate popup windows for Settings / OAuth / Add Compatible / Edit Account. The runtime entry stays native and does not collapse these surfaces into route pages. |
@@ -65,15 +66,15 @@ The current implementation is a working MVP with a native tray-window model (`Ma
 Latest verified commands:
 
 ```powershell
-dotnet build CodexBar.Win.sln
-dotnet run --project tests\CodexBar.Tests\CodexBar.Tests.csproj
+.\.dotnet\dotnet.exe build .\CodexBar.Win.sln -c Release
+.\.dotnet\dotnet.exe run --project .\tests\CodexBar.Tests\CodexBar.Tests.csproj
 ```
 
 Latest known result:
 
 ```text
-build: succeeded
-tests: 55 passed
+build: succeeded, 0 warnings, 0 errors
+tests: 74 passed
 ```
 
 Current automated coverage includes:
@@ -96,12 +97,14 @@ Current automated coverage includes:
 - OAuth flow rotation cancels stale loopback listeners before restarting localhost capture
 - usage scanner read-only behavior
 - usage scanner locked active session tolerance
+- compatible-provider token reset attribution marker
 - usage attribution by switch intervals
 - switch-journal provider-id migration
 - aggregate-gateway reroute behavior
 - aggregate-gateway official-quota preference behavior
 - aggregate-gateway manual-mode passthrough
 - aggregate-gateway healthy-account preference over reauth-needed accounts
+- aggregate-gateway avoids rerouting within the same explicit OpenAI quota scope when looking for capacity
 - launch-service write-only skip behavior
 - launch-service desktop start path
 - desktop locator current-cli package inference
@@ -114,8 +117,12 @@ Current automated coverage includes:
 - remaining-quota display formatting for 5h and weekly windows
 - inline flyout quota label formatting for compact cards
 - official OpenAI quota refresh success mapping
+- official OpenAI quota refresh with workspace/account id headers and quota-scope persistence
+- official OpenAI Team plan mapping and workspace display formatting
 - official OpenAI quota unauthorized handling
 - compatible-account CSV secret import
+- OpenAI OAuth workspace metadata CSV export/import
+- compatible-provider token reset marker CSV export/import
 - OAuth CSV default secret exclusion
 
 ## Manual Test Commands
@@ -177,6 +184,13 @@ Enable aggregate mode in app config:
 ```
 
 ## Recent Change Log
+
+### 2026-05-06
+
+- Bumped project version metadata to `0.3.4` and aligned README / CHANGELOG / implementation-progress notes around the OpenAI workspace and compatible-token-reset release candidate.
+- Added same-login OpenAI workspace persistence and selection for ChatGPT/Codex Personal / Team / Business / Enterprise / Edu spaces without splitting the shared `.codex` history pool.
+- Added workspace-aware official quota refresh with `ChatGPT-Account-Id`, Team plan display, quota-scope persistence, and shared-quota routing safeguards.
+- Added compatible-provider local token-count reset in the edit-account window, local API, frontend rebuild, usage attribution, CSV round-trip, and regression coverage.
 
 ### 2026-04-24
 

@@ -26,6 +26,12 @@ public sealed class AccountCsvService
         "refresh_token",
         "id_token",
         "oauth_account_id",
+        "workspace_id",
+        "workspace_name",
+        "workspace_type",
+        "seat_type",
+        "quota_scope_key",
+        "token_count_reset_at",
         "last_refresh"
     ];
 
@@ -90,6 +96,12 @@ public sealed class AccountCsvService
                 tokens?.RefreshToken ?? "",
                 tokens?.IdToken ?? "",
                 account.OpenAiAccountId ?? tokens?.AccountId ?? "",
+                account.WorkspaceId ?? account.OpenAiAccountId ?? tokens?.AccountId ?? "",
+                account.WorkspaceName ?? "",
+                account.WorkspaceType ?? "",
+                account.SeatType ?? "",
+                account.QuotaScopeKey ?? "",
+                account.TokenCountResetAt?.ToString("O", CultureInfo.InvariantCulture) ?? "",
                 tokens?.LastRefresh.ToString("O", CultureInfo.InvariantCulture) ?? ""));
         }
     }
@@ -181,6 +193,12 @@ public sealed class AccountCsvService
                 Email = FirstNonEmpty(Get(index, values, "email"), existingAccount?.Email),
                 SubjectId = FirstNonEmpty(Get(index, values, "subject_id"), existingAccount?.SubjectId),
                 OpenAiAccountId = FirstNonEmpty(Get(index, values, "oauth_account_id"), existingAccount?.OpenAiAccountId),
+                WorkspaceId = FirstNonEmpty(Get(index, values, "workspace_id"), existingAccount?.WorkspaceId, Get(index, values, "oauth_account_id"), existingAccount?.OpenAiAccountId),
+                WorkspaceName = FirstNonEmpty(Get(index, values, "workspace_name"), existingAccount?.WorkspaceName),
+                WorkspaceType = FirstNonEmpty(Get(index, values, "workspace_type"), existingAccount?.WorkspaceType),
+                SeatType = FirstNonEmpty(Get(index, values, "seat_type"), existingAccount?.SeatType),
+                QuotaScopeKey = FirstNonEmpty(Get(index, values, "quota_scope_key"), existingAccount?.QuotaScopeKey),
+                TokenCountResetAt = ParseDateTimeOffset(Get(index, values, "token_count_reset_at")) ?? existingAccount?.TokenCountResetAt,
                 CredentialRef = credentialRef,
                 Status = status,
                 CreatedAt = existingAccount?.CreatedAt ?? DateTimeOffset.UtcNow,
@@ -222,7 +240,7 @@ public sealed class AccountCsvService
             AccessToken = accessToken,
             RefreshToken = EmptyToNull(Get(index, values, "refresh_token")),
             IdToken = EmptyToNull(Get(index, values, "id_token")),
-            AccountId = EmptyToNull(Get(index, values, "oauth_account_id")),
+            AccountId = EmptyToNull(FirstNonEmpty(Get(index, values, "workspace_id"), Get(index, values, "oauth_account_id"))),
             LastRefresh = lastRefresh == default ? DateTimeOffset.UtcNow : lastRefresh
         }, cancellationToken);
         return true;
@@ -247,6 +265,11 @@ public sealed class AccountCsvService
 
     private static int? ParseInt(string? value)
         => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+
+    private static DateTimeOffset? ParseDateTimeOffset(string? value)
+        => DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)
+            ? parsed
+            : null;
 
     private static TEnum ParseEnum<TEnum>(string? value, TEnum fallback) where TEnum : struct
         => Enum.TryParse<TEnum>(value, ignoreCase: true, out var parsed) ? parsed : fallback;

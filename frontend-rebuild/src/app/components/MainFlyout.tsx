@@ -14,6 +14,11 @@ export interface FlyoutAccount {
   name: string;
   type: 'openai' | 'compatible';
   email?: string;
+  workspaceName?: string;
+  workspaceType?: string;
+  seatType?: string;
+  quotaScopeKey?: string;
+  sharedQuotaScope?: boolean;
   baseUrl?: string;
   isActive: boolean;
   status: 'online' | 'offline' | 'checking';
@@ -54,6 +59,14 @@ function DraggableAccount({
   onDelete
 }: DraggableAccountProps) {
   const isDark = theme === 'dark';
+  const metaText = account.type === 'openai'
+    ? [
+        account.email,
+        account.workspaceType,
+        account.seatType,
+        account.sharedQuotaScope ? 'shared quota' : undefined
+      ].filter(Boolean).join(' · ')
+    : account.baseUrl;
   const [{ isDragging }, drag] = useDrag({
     type: ITEM_TYPE,
     item: { index },
@@ -121,7 +134,7 @@ function DraggableAccount({
               />
             </div>
             <div className="flex items-center justify-between gap-2">
-              <div className={`text-[10px] truncate ${isDark ? 'text-white/50' : 'text-[#605e5c]'}`}>{account.email || account.baseUrl}</div>
+              <div className={`text-[10px] truncate ${isDark ? 'text-white/50' : 'text-[#605e5c]'}`}>{metaText}</div>
               <div className="flex items-center gap-1 flex-shrink-0">
                 {!account.isActive && (
                   <Windows11Button variant="secondary" size="sm" theme={theme} onClick={() => onActivate(account)} disabled={busy}>
@@ -206,6 +219,11 @@ function toAccount(account: DashboardAccountDto): FlyoutAccount {
     name: account.name,
     type: account.type,
     email: account.email ?? undefined,
+    workspaceName: account.workspaceName ?? undefined,
+    workspaceType: account.workspaceType ?? undefined,
+    seatType: account.seatType ?? undefined,
+    quotaScopeKey: account.quotaScopeKey ?? undefined,
+    sharedQuotaScope: account.sharedQuotaScope,
     baseUrl: account.baseUrl ?? undefined,
     isActive: account.isActive,
     status: account.status,

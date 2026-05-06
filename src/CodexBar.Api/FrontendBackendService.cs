@@ -14,12 +14,14 @@ public sealed class FrontendBackendService
     private readonly CodexHomeLocator _homeLocator = new();
     private readonly StartupRegistration _startup = new();
     private readonly ProbeStatusStore _probeStatusStore;
+    private readonly DiagnosticLogger _logger;
 
     public FrontendBackendService(ProbeStatusStore probeStatusStore)
     {
         _probeStatusStore = probeStatusStore;
         _appPaths.EnsureDirectories();
         _appConfigStore = new AppConfigStore(_appPaths.ConfigPath);
+        _logger = new DiagnosticLogger(_appPaths);
     }
 
     public async Task<FrontendDashboardDto> GetDashboardAsync(CancellationToken cancellationToken = default)
@@ -453,7 +455,8 @@ public sealed class FrontendBackendService
             (!string.IsNullOrWhiteSpace(request.BaseUrl) ||
              !string.IsNullOrWhiteSpace(request.ApiKey) ||
              !string.IsNullOrWhiteSpace(request.ProviderName) ||
-             !string.IsNullOrWhiteSpace(request.CodexProviderId)))
+             !string.IsNullOrWhiteSpace(request.CodexProviderId) ||
+             request.ResetTokenCount))
         {
             return new FrontendCommandResult(false, "OpenAI OAuth account supports label update only.");
         }
@@ -487,6 +490,11 @@ public sealed class FrontendBackendService
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
                 await _secretStore.WriteSecretAsync(account.CredentialRef, apiKey, cancellationToken);
+            }
+
+            if (request.ResetTokenCount)
+            {
+                updatedAccount = updatedAccount with { TokenCountResetAt = DateTimeOffset.UtcNow };
             }
         }
 
@@ -536,11 +544,16 @@ public sealed class FrontendBackendService
     public async Task<FrontendCommandResult> SaveOpenAiOAuthAsync(
         OAuthTokens tokens,
         string label,
+        OpenAiWorkspaceDescriptor? selectedWorkspaceHint,
         CancellationToken cancellationToken = default)
     {
         var identity = OAuthIdentityExtractor.Extract(tokens);
-        var displayLabel = string.IsNullOrWhiteSpace(label) || string.Equals(label, "OpenAI", StringComparison.OrdinalIgnoreCase)
-            ? identity.BestDisplayName(label)
+        var tokenAccountId = tokens.AccountId;
+        var discoveredWorkspaces = await OpenAiWorkspaceDiscovery.DiscoverAsync(tokens, identity, cancellationToken: cancellationToken);
+        var workspace = OpenAiWorkspaceDiscovery.ResolveCurrentForSave(discoveredWorkspaces, tokens, selectedWorkspaceHint);
+        tokens = workspace.ApplyTo(tokens);
+        var displayLabel = OpenAiWorkspaceLabelFormatter.ShouldGenerate(label, identity)
+            ? OpenAiWorkspaceLabelFormatter.Build(identity, workspace, label)
             : label.Trim();
 
         var config = await _appConfigStore.LoadAsync(cancellationToken);
@@ -551,6 +564,28 @@ public sealed class FrontendBackendService
             string.Equals(account.AccountId, accountId, StringComparison.OrdinalIgnoreCase));
         var credentialRef = existingAccount?.CredentialRef ?? $"oauth:openai:{accountId}";
         await _secretStore.WriteTokensAsync(credentialRef, tokens, cancellationToken);
+        _logger.Info("oauth.openai.save", new
+        {
+            surface = "api",
+            email = identity.Email,
+            subjectPresent = !string.IsNullOrWhiteSpace(identity.SubjectId),
+            tokenAccountId,
+            selectedWorkspaceId = workspace.WorkspaceId,
+            selectedWorkspaceName = workspace.WorkspaceName,
+            selectedWorkspaceType = workspace.WorkspaceType,
+            selectedSeatType = workspace.SeatType,
+            discoveredWorkspaceCount = discoveredWorkspaces.Count,
+            discoveredWorkspaces = discoveredWorkspaces.Select(item => new
+            {
+                item.WorkspaceId,
+                item.WorkspaceName,
+                item.WorkspaceType,
+                item.SeatType,
+                item.IsCurrent
+            }).ToList(),
+            localAccountId = accountId,
+            existingAccountMatched = existingAccount is not null
+        });
 
         config = config with
         {
@@ -574,6 +609,11 @@ public sealed class FrontendBackendService
                 Email = identity.Email ?? existingAccount?.Email,
                 SubjectId = identity.SubjectId ?? existingAccount?.SubjectId,
                 OpenAiAccountId = OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens) ?? existingAccount?.OpenAiAccountId,
+                WorkspaceId = workspace.WorkspaceId,
+                WorkspaceName = workspace.WorkspaceName,
+                WorkspaceType = workspace.WorkspaceType ?? existingAccount?.WorkspaceType,
+                SeatType = workspace.SeatType ?? existingAccount?.SeatType,
+                QuotaScopeKey = workspace.QuotaScopeKey ?? existingAccount?.QuotaScopeKey,
                 CredentialRef = credentialRef,
                 Status = AccountStatus.Active,
                 CreatedAt = existingAccount?.CreatedAt ?? DateTimeOffset.UtcNow,
@@ -656,10 +696,11 @@ public sealed class FrontendBackendService
             }
 
             var identity = OAuthIdentityExtractor.Extract(tokens);
+            var workspace = OpenAiWorkspaceDiscovery.CurrentOrFallback(tokens, identity);
             var label = account.Label;
             if (string.IsNullOrWhiteSpace(label) || string.Equals(label, "OpenAI", StringComparison.OrdinalIgnoreCase))
             {
-                label = identity.BestDisplayName(account.Label);
+                label = OpenAiWorkspaceLabelFormatter.Build(identity, workspace, account.Label);
             }
 
             var updated = account with
@@ -667,7 +708,12 @@ public sealed class FrontendBackendService
                 Label = label,
                 Email = account.Email ?? identity.Email,
                 SubjectId = account.SubjectId ?? identity.SubjectId,
-                OpenAiAccountId = account.OpenAiAccountId ?? OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens)
+                OpenAiAccountId = account.OpenAiAccountId ?? OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens),
+                WorkspaceId = account.WorkspaceId ?? workspace.WorkspaceId,
+                WorkspaceName = account.WorkspaceName ?? workspace.WorkspaceName,
+                WorkspaceType = account.WorkspaceType ?? workspace.WorkspaceType,
+                SeatType = account.SeatType ?? workspace.SeatType,
+                QuotaScopeKey = account.QuotaScopeKey ?? workspace.QuotaScopeKey
             };
             changed |= updated != account;
             accounts.Add(updated);
@@ -765,6 +811,11 @@ public sealed class FrontendBackendService
             account.Label,
             isOpenAi ? "openai" : "compatible",
             account.Email,
+            account.WorkspaceName,
+            account.WorkspaceType,
+            account.SeatType,
+            account.QuotaScopeKey,
+            isOpenAi && OpenAiQuotaPolicy.HasSharedQuotaScope(account, config.Accounts),
             provider?.BaseUrl,
             config.ActiveSelection?.ProviderId == account.ProviderId && config.ActiveSelection?.AccountId == account.AccountId,
             _probeStatusStore.Resolve(account),

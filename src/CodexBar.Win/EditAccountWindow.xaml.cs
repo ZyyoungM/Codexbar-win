@@ -13,6 +13,7 @@ public partial class EditAccountWindow : Window
     private readonly ProviderDefinition _provider;
     private readonly AccountRecord _account;
     private readonly WindowsCredentialSecretStore _secretStore = new();
+    private bool _resetTokenCountRequested;
 
     public EditAccountResult? Result { get; private set; }
 
@@ -39,6 +40,7 @@ public partial class EditAccountWindow : Window
             CompatiblePanel.Visibility = Visibility.Collapsed;
             ProviderNameBox.IsReadOnly = true;
             OfficialUsagePanel.Visibility = Visibility.Visible;
+            ResetTokenCountButton.Visibility = Visibility.Collapsed;
             OfficialPlanBox.Text = FormatPlan(account);
             FiveHourQuotaBox.Text = OpenAiQuotaDisplayFormatter.FormatDetailedRemaining(account.FiveHourQuota, "5h");
             WeeklyQuotaBox.Text = OpenAiQuotaDisplayFormatter.FormatDetailedRemaining(account.WeeklyQuota, "\u5468");
@@ -81,13 +83,24 @@ public partial class EditAccountWindow : Window
             ProviderNameBox.Text.Trim(),
             BaseUrlBox.Text.Trim(),
             AccountLabelBox.Text.Trim(),
-            ApiKeyBox.Password);
+            ApiKeyBox.Password,
+            _resetTokenCountRequested);
         ShowStatus("\u5DF2\u51C6\u5907\u4FDD\u5B58", "\u6B63\u5728\u5173\u95ED\u7A97\u53E3\u5E76\u5199\u5165\u672C\u5730\u914D\u7F6E\u3002", isSuccess: true);
         DialogResult = true;
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
         => DialogResult = false;
+
+    private void ResetTokenCount_Click(object sender, RoutedEventArgs e)
+    {
+        _resetTokenCountRequested = true;
+        ResetTokenCountButton.IsEnabled = false;
+        ShowStatus(
+            "Token \u8BA1\u6570\u5C06\u5728\u4FDD\u5B58\u540E\u91CD\u7F6E",
+            "\u8FD9\u53EA\u4F1A\u66F4\u65B0 CodexBar \u672C\u5730\u8BA1\u6570\u8D77\u70B9\uFF0C\u4E0D\u4F1A\u5220\u9664 sessions / archived_sessions\u3002",
+            isSuccess: true);
+    }
 
     private async void Probe_Click(object sender, RoutedEventArgs e)
     {
@@ -152,9 +165,10 @@ public partial class EditAccountWindow : Window
 
     private static string FormatPlan(AccountRecord account)
     {
-        if (account.Tier != AccountTier.Unknown)
+        var tier = OpenAiAccountDisplayFormatter.FormatTier(account);
+        if (!string.IsNullOrWhiteSpace(tier))
         {
-            return account.Tier.ToString().ToLowerInvariant();
+            return tier;
         }
 
         return string.IsNullOrWhiteSpace(account.OfficialPlanTypeRaw)
@@ -184,6 +198,7 @@ public partial class EditAccountWindow : Window
     {
         ProbeButton.IsEnabled = !busy;
         SaveButton.IsEnabled = !busy;
+        ResetTokenCountButton.IsEnabled = !busy && !_resetTokenCountRequested;
     }
 
     private void ShowStatus(string title, string message, bool isError = false, bool isSuccess = false)
@@ -222,4 +237,5 @@ public sealed record EditAccountResult(
     string ProviderName,
     string BaseUrl,
     string AccountLabel,
-    string ApiKey);
+    string ApiKey,
+    bool ResetTokenCountRequested);

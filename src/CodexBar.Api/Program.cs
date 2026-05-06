@@ -107,11 +107,14 @@ app.MapPost("/api/providers/compatible/probe", async (FrontendCompatibleProvider
 app.MapGet("/api/oauth/state", async (OAuthSessionManager sessionManager)
     => Results.Ok(await sessionManager.GetStateAsync()));
 
-app.MapPost("/api/oauth/open-browser", async (OAuthSessionManager sessionManager)
-    => Results.Ok(await sessionManager.OpenBrowserAsync()));
+app.MapPost("/api/oauth/open-browser", async (FrontendOAuthStartRequest? request, OAuthSessionManager sessionManager)
+    => Results.Ok(await sessionManager.OpenBrowserAsync(request?.WorkspaceId)));
 
-app.MapPost("/api/oauth/listen", async (OAuthSessionManager sessionManager)
-    => Results.Ok(await sessionManager.ListenAsync()));
+app.MapPost("/api/oauth/listen", async (FrontendOAuthStartRequest? request, OAuthSessionManager sessionManager)
+    => Results.Ok(await sessionManager.ListenAsync(request?.WorkspaceId)));
+
+app.MapPost("/api/oauth/select-workspace", async (FrontendOAuthStartRequest request, OAuthSessionManager sessionManager)
+    => Results.Ok(await sessionManager.SelectWorkspaceAsync(request.WorkspaceId)));
 
 app.MapPost("/api/oauth/complete", async (FrontendOAuthCompleteRequest request, OAuthSessionManager sessionManager, FrontendBackendService service, CancellationToken cancellationToken)
     => ToResult(await sessionManager.CompleteAsync(request, service.SaveOpenAiOAuthAsync, cancellationToken)));

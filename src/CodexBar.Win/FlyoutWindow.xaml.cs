@@ -416,14 +416,25 @@ public partial class FlyoutWindow : Window
     }
 
     private async void OAuth_Click(object sender, RoutedEventArgs e)
+        => await ShowOAuthDialogAsync();
+
+    private async void ReauthorizeAccount_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OAuthDialog
+        if (ResolveAccountItem(sender) is { } item)
+        {
+            await ShowOAuthDialogAsync(item.Name);
+        }
+    }
+
+    private async Task ShowOAuthDialogAsync(string? suggestedLabel = null)
+    {
+        var dialog = new OAuthDialog(suggestedLabel)
         {
             Owner = this
         };
         if (dialog.ShowDialog() == true && dialog.Tokens is not null)
         {
-            await _viewModel.AddOpenAiOAuthAsync(dialog.Tokens, dialog.AccountLabel);
+            await _viewModel.AddOpenAiOAuthAsync(dialog.Tokens, dialog.AccountLabel, dialog.SelectedWorkspaceHint);
         }
     }
 

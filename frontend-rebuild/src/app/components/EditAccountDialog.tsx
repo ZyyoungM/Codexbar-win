@@ -19,6 +19,7 @@ export function EditAccountDialog({ theme = 'light', account, onClose, onSaved }
   const [baseUrl, setBaseUrl] = useState(account.baseUrl ?? '');
   const [codexProviderId, setCodexProviderId] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [resetTokenCount, setResetTokenCount] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -29,6 +30,7 @@ export function EditAccountDialog({ theme = 'light', account, onClose, onSaved }
     setBaseUrl(account.baseUrl ?? '');
     setCodexProviderId('');
     setApiKey('');
+    setResetTokenCount(false);
     setError('');
     setMessage('');
   }, [account]);
@@ -98,7 +100,8 @@ export function EditAccountDialog({ theme = 'light', account, onClose, onSaved }
       providerName: account.type === 'compatible' ? (providerName.trim() || null) : null,
       baseUrl: account.type === 'compatible' ? baseUrl.trim() : null,
       codexProviderId: account.type === 'compatible' ? (codexProviderId.trim() || null) : null,
-      apiKey: account.type === 'compatible' ? (apiKey.trim() || null) : null
+      apiKey: account.type === 'compatible' ? (apiKey.trim() || null) : null,
+      resetTokenCount: account.type === 'compatible' ? resetTokenCount : false
     };
 
     await runAction(() => codexbarApi.editAccount(payload), () => {
@@ -174,6 +177,23 @@ export function EditAccountDialog({ theme = 'light', account, onClose, onSaved }
                     type="password"
                     placeholder="Leave empty to keep current key"
                   />
+                </div>
+
+                <div className={`p-3 rounded border ${isDark ? 'bg-white/5 border-white/10' : 'bg-[#f9f9f9] border-[#0000000d]'}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className={`text-[11px] leading-relaxed ${isDark ? 'text-white/60' : 'text-[#605e5c]'}`}>
+                      Reset only CodexBar local token counts. Shared sessions stay untouched.
+                    </div>
+                    <Windows11Button
+                      variant={resetTokenCount ? 'primary' : 'secondary'}
+                      size="sm"
+                      theme={theme}
+                      onClick={() => setResetTokenCount(true)}
+                      disabled={busy || resetTokenCount}
+                    >
+                      {resetTokenCount ? 'Will Reset' : 'Reset Tokens'}
+                    </Windows11Button>
+                  </div>
                 </div>
               </>
             )}

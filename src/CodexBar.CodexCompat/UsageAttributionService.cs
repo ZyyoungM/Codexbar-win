@@ -55,6 +55,13 @@ public sealed class UsageAttributionService
                 var key = (account.ProviderId, account.AccountId);
                 accountSessions.TryGetValue(key, out var sessionsForAccount);
                 sessionsForAccount ??= [];
+                if (account.TokenCountResetAt is { } resetAt)
+                {
+                    sessionsForAccount = sessionsForAccount
+                        .Where(session => session.StartedAt >= resetAt)
+                        .ToList();
+                }
+
                 return new AccountUsageSummary
                 {
                     ProviderId = account.ProviderId,

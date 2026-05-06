@@ -5,7 +5,7 @@ namespace CodexBar.Api;
 
 public interface IOpenAiOAuthClient
 {
-    OAuthPendingFlow BeginLogin();
+    OAuthPendingFlow BeginLogin(string? allowedWorkspaceId = null);
     void OpenSystemBrowser(Uri authorizationUrl);
     Task<OAuthTokens> ExchangeCodeAsync(OAuthPendingFlow flow, string code, CancellationToken cancellationToken = default);
     Task<OAuthTokens> CompleteManualInputAsync(OAuthPendingFlow flow, string callbackUrlOrCode, CancellationToken cancellationToken = default);
@@ -21,11 +21,19 @@ public interface ILoopbackCallbackListener
     void CancelPendingWait();
 }
 
+public interface IOpenAiWorkspaceDiscoveryService
+{
+    Task<IReadOnlyList<OpenAiWorkspaceDescriptor>> DiscoverAsync(
+        OAuthTokens tokens,
+        CancellationToken cancellationToken = default);
+}
+
 internal sealed class OpenAiOAuthClientAdapter : IOpenAiOAuthClient
 {
     private readonly OpenAIOAuthClient _inner = new();
 
-    public OAuthPendingFlow BeginLogin() => _inner.BeginLogin();
+    public OAuthPendingFlow BeginLogin(string? allowedWorkspaceId = null)
+        => _inner.BeginLogin(new OAuthOptions { AllowedWorkspaceId = allowedWorkspaceId });
 
     public void OpenSystemBrowser(Uri authorizationUrl) => _inner.OpenSystemBrowser(authorizationUrl);
 
@@ -48,4 +56,15 @@ internal sealed class LoopbackCallbackListenerAdapter : ILoopbackCallbackListene
 
     public void CancelPendingWait()
         => _inner.CancelPendingWait();
+}
+
+internal sealed class OpenAiWorkspaceDiscoveryService : IOpenAiWorkspaceDiscoveryService
+{
+    public async Task<IReadOnlyList<OpenAiWorkspaceDescriptor>> DiscoverAsync(
+        OAuthTokens tokens,
+        CancellationToken cancellationToken = default)
+    {
+        var identity = OAuthIdentityExtractor.Extract(tokens);
+        return await OpenAiWorkspaceDiscovery.DiscoverAsync(tokens, identity, cancellationToken: cancellationToken);
+    }
 }

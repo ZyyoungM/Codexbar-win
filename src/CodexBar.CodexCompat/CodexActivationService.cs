@@ -54,6 +54,7 @@ public sealed class CodexActivationService
             configDocument.RemoveTopLevelKey("openai_base_url");
             var tokens = await _tokenStore.ReadTokensAsync(account.CredentialRef, cancellationToken)
                 ?? throw new InvalidOperationException($"OAuth tokens are missing for {account.Label}.");
+            tokens = ApplyWorkspaceContext(tokens, account);
             authContent = _authStore.SerializeOpenAiOAuth(tokens);
         }
         else
@@ -125,6 +126,15 @@ public sealed class CodexActivationService
 
     private static bool IsBuiltInOpenAiProvider(string providerId)
         => string.Equals(providerId, "openai", StringComparison.OrdinalIgnoreCase);
+
+    private static OAuthTokens ApplyWorkspaceContext(OAuthTokens tokens, AccountRecord account)
+    {
+        var workspaceId = OpenAiQuotaPolicy.EffectiveOpenAiWorkspaceId(account);
+        return string.IsNullOrWhiteSpace(workspaceId) ||
+               string.Equals(tokens.AccountId, workspaceId, StringComparison.OrdinalIgnoreCase)
+            ? tokens
+            : tokens with { AccountId = workspaceId };
+    }
 
     private static string ToCodexWireApi(WireApi wireApi)
         => wireApi == WireApi.ChatCompletions ? "chat" : "responses";

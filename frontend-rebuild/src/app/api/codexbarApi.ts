@@ -12,6 +12,11 @@ export interface DashboardAccountDto {
   name: string;
   type: 'openai' | 'compatible';
   email: string | null;
+  workspaceName: string | null;
+  workspaceType: string | null;
+  seatType: string | null;
+  quotaScopeKey: string | null;
+  sharedQuotaScope: boolean;
   baseUrl: string | null;
   isActive: boolean;
   status: ConnectionStatus;
@@ -61,6 +66,17 @@ export interface OAuthStateDto {
   statusMessage: string;
   errorMessage: string | null;
   successMessage: string | null;
+  workspaces: OAuthWorkspaceDto[];
+  selectedWorkspaceId: string | null;
+}
+
+export interface OAuthWorkspaceDto {
+  workspaceId: string;
+  workspaceName: string;
+  workspaceType: string | null;
+  seatType: string | null;
+  isCurrent: boolean;
+  displayLabel: string;
 }
 
 export interface SettingsSaveRequest {
@@ -96,6 +112,7 @@ export interface EditAccountRequest {
   baseUrl: string | null;
   codexProviderId: string | null;
   apiKey: string | null;
+  resetTokenCount?: boolean;
 }
 
 const baseUrl = (import.meta.env.VITE_CODEXBAR_API_BASE as string | undefined)?.trim() || 'http://127.0.0.1:5057';
@@ -291,22 +308,31 @@ export const codexbarApi = {
     return requestJson<OAuthStateDto>('/api/oauth/state');
   },
 
-  openOAuthBrowser() {
+  openOAuthBrowser(workspaceId?: string) {
     return requestJson<OAuthStateDto>('/api/oauth/open-browser', {
-      method: 'POST'
+      method: 'POST',
+      body: JSON.stringify({ workspaceId: workspaceId || null })
     });
   },
 
-  listenOAuthCallback() {
+  listenOAuthCallback(workspaceId?: string) {
     return requestJson<OAuthStateDto>('/api/oauth/listen', {
-      method: 'POST'
+      method: 'POST',
+      body: JSON.stringify({ workspaceId: workspaceId || null })
     });
   },
 
-  completeOAuth(callbackInput: string, label: string) {
+  selectOAuthWorkspace(workspaceId: string) {
+    return requestJson<OAuthStateDto>('/api/oauth/select-workspace', {
+      method: 'POST',
+      body: JSON.stringify({ workspaceId })
+    });
+  },
+
+  completeOAuth(callbackInput: string, label: string, workspaceId?: string | null) {
     return requestJson<CommandResult>('/api/oauth/complete', {
       method: 'POST',
-      body: JSON.stringify({ callbackInput, label })
+      body: JSON.stringify({ callbackInput, label, workspaceId: workspaceId || null })
     });
   }
 };
