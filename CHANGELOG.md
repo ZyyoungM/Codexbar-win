@@ -1,5 +1,16 @@
 # 更新日志
 
+## v0.3.5
+
+- 新增 Settings / 关于页“更新”区域：检查 GitHub stable Release、显示当前/最新版本、下载新版便携包、显示下载进度、打开 Release 页面并复制更新诊断。
+- 新增 `CodexBar.Runtime` 更新服务：忽略 draft / prerelease，按 semver 比较版本，选择 `CodexBar-portable-win-x64-vX.Y.Z.zip`，提取 release notes 摘要，并清晰返回网络失败、无更新、资产缺失和版本格式异常。
+- 新增下载与校验流程：下载到 `%TEMP%\CodexBarUpdate\{version}`，校验文件大小，优先使用 `.sha256` / checksum asset；没有官方 checksum 时计算本地 SHA256 并作为 warning 展示。
+- 新增独立 `CodexBar.Updater.exe` helper：等待主进程退出、备份当前程序目录、解压 staging、替换程序目录、清理临时下载并重启新版 `CodexBar.Win.exe`；失败时尽量回滚并提示日志路径。
+- 自动更新安全边界明确拒绝空目录、磁盘根目录、用户 Home、`~/.codex`、`~/.codexbar` 和 Windows 系统目录，不触碰 shared `.codex` history pool、`sessions`、`archived_sessions`、`config.toml`、`auth.json` 或 Codex Desktop。
+- `package.ps1` 现在会把 updater helper 放入便携包，并生成 `CodexBar-portable-win-x64-vX.Y.Z.zip.sha256` 供 GitHub Release 附带发布。
+- 修复 usage scanner 对 Codex JSONL 累计 `total_token_usage` 快照的重复累加问题：扫描时只取每个响应条目的最后一个累计快照，避免 lifetime / Today / Last 7 Days / Last 30 Days token 统计被放大。
+- updater helper 自身补齐 Windows 系统目录二次拒绝校验，确保即使被外部直接调用也不会把系统目录当作安装目录处理。
+
 ## v0.3.4
 
 - OpenAI OAuth 账号现在按 ChatGPT/Codex workspace 保存，同一登录邮箱下的 Personal / Team / Business / Enterprise / Edu 空间可同时收纳、展示和切换，不再只保留最后一次 OAuth 结果。

@@ -3,7 +3,7 @@
 
 # CodexBar for Windows
 
-当前版本：`v0.3.4`
+当前版本：`v0.3.5`
 
 CodexBar for Windows 是 macOS 项目 [`lizhelang/codexbar`](https://github.com/lizhelang/codexbar) 的 Windows 原生移植版。它的目标不是重做 Codex，而是在 Windows 上提供一个更顺手的账号与 Provider 切换入口，让你在**不拆分本地 `.codex` 历史池**的前提下管理 OpenAI 官方账号和第三方兼容接口。
 
@@ -33,11 +33,11 @@ CodexBar for Windows 的日常交互主要围绕两类界面展开：
 
 ### 方式一：推荐使用便携包（下载后即用）
 
-如果你只是想直接使用 CodexBar，推荐优先使用便携包，直接去 release 下载 `CodexBar-portable-win-x64-v0.3.4.zip`。
+如果你只是想直接使用 CodexBar，推荐优先使用便携包，直接去 release 下载 `CodexBar-portable-win-x64-v0.3.5.zip`。
 
 拿到压缩包后，按下面 3 步即可开始使用：
 
-1. 解压 `CodexBar-portable-win-x64-v0.3.4.zip`
+1. 解压 `CodexBar-portable-win-x64-v0.3.5.zip`
 2. 进入解压后的目录
 3. 双击 `start-codexbar.cmd`
 
@@ -87,6 +87,7 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 - 从 GUI 直接启动或确认重启 Codex，并在兼容 Provider 场景下注入当前 API Key
 - 从托盘右键菜单快速查看当前账号/API，并直接切换到任意账号/API
 - 在设置页导出 / 导入账号配置和历史会话 ZIP
+- 在 Settings > 关于 > 更新 中检查 GitHub Release、下载便携包、校验 SHA256，并在确认后由独立 updater helper 自动替换并重启 CodexBar
 - 支持基础托盘交互、分页设置页、OAuth 登录窗口和兼容 Provider 管理窗口
 
 ## 兼容性承诺
@@ -164,6 +165,7 @@ dotnet run --project .\src\CodexBar.Cli\CodexBar.Cli.csproj -- import-history --
 - **切换只影响新会话。** 已经在运行中的 Codex 进程不会被强行改写。
 - **如果 Codex Desktop 已经打开，主浮窗启动路径会先确认重启。** 确认后会关闭当前窗口和后台进程，再启动新的 Codex；环境变量只会进入新进程。
 - **如果机器没有全局 `.NET`，不要直接双击 `bin` 目录里的 exe。** 优先用便携包里的启动脚本，或使用仓库脚本启动。
+- **自动更新只替换 CodexBar 程序目录。** 它不会触碰 Codex Desktop、shared `~/.codex` 历史池、`sessions`、`archived_sessions`、`config.toml`、`auth.json` 或 `%USERPROFILE%\.codexbar`。
 - **兼容 Provider 的连通性探测基于 `/models`。** 如果探测失败，先检查 `Base URL` 是否缺少 `/v1`。
 - **本地 API 的浏览器访问只信任受控 loopback origin。** 当前只允许 `http://127.0.0.1:5057` / `http://localhost:5057` / `http://127.0.0.1:5173` / `http://localhost:5173` / `http://127.0.0.1:4173` / `http://localhost:4173`；这样保留本地 API 自身和前端重建开发/预览入口，同时阻止任意网页跨站读写本地 API。
 
@@ -183,6 +185,14 @@ dotnet run --project .\src\CodexBar.Cli\CodexBar.Cli.csproj -- import-history --
 ## 版本更新摘要
 
 `README.md` 只保留相对上个版本的简要说明，详细变更请看 [CHANGELOG.md](./CHANGELOG.md)。
+
+### v0.3.5 - 2026-05-09
+
+- Settings / 关于页新增“更新”区域，可检查 GitHub stable Release、显示当前/最新版本、下载便携 zip、查看进度并复制更新诊断
+- 新增独立 `CodexBar.Updater.exe` helper：主程序退出后备份当前程序目录、解压新版、替换程序目录并重启 `CodexBar.Win.exe`
+- 下载后会校验文件大小；Release 提供 `.sha256` 时执行官方 SHA256 校验，否则计算并展示本地 SHA256 且标记为 warning
+- 自动更新明确保持 shared `.codex` 历史、账号、token、`config.toml` / `auth.json` 和 `%USERPROFILE%\.codexbar` 不变；危险目标目录会被拒绝
+- 修复本地 usage 扫描遇到 Codex JSONL 累计 token 快照时重复相加的问题，避免 lifetime / 区间 token 统计被放大
 
 ### v0.3.4 - 2026-05-06
 

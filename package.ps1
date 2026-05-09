@@ -10,8 +10,10 @@ $dotnetRoot = Join-Path $root ".dotnet"
 $dotnet = Join-Path $dotnetRoot "dotnet.exe"
 $solution = Join-Path $root "CodexBar.Win.sln"
 $project = Join-Path $root "src\CodexBar.Win\CodexBar.Win.csproj"
+$updaterProject = Join-Path $root "src\CodexBar.Updater\CodexBar.Updater.csproj"
 $nugetConfig = Join-Path $root "NuGet.Config"
 $buildOutput = Join-Path $root "src\CodexBar.Win\bin\$Configuration\net8.0-windows"
+$updaterOutput = Join-Path $root "src\CodexBar.Updater\bin\$Configuration\net8.0-windows"
 
 if (!(Test-Path $dotnet)) {
     throw "Local .NET SDK/runtime not found at $dotnet"
@@ -76,13 +78,27 @@ Invoke-DotNet @(
     "-p:UseSharedCompilation=false",
     "-p:RunAnalyzers=false"
 )
+Invoke-DotNet @(
+    "build",
+    $updaterProject,
+    "--no-restore",
+    "--configuration", $Configuration,
+    "-m:1",
+    "-p:UseSharedCompilation=false",
+    "-p:RunAnalyzers=false"
+)
 
 $appDll = Join-Path $buildOutput "CodexBar.Win.dll"
 if (!(Test-Path -LiteralPath $appDll)) {
     throw "Build output missing app DLL: $appDll"
 }
+$updaterExe = Join-Path $updaterOutput "CodexBar.Updater.exe"
+if (!(Test-Path -LiteralPath $updaterExe)) {
+    throw "Build output missing updater helper: $updaterExe"
+}
 
 Copy-Item -Path (Join-Path $buildOutput "*") -Destination $packageRoot -Recurse -Force
+Copy-Item -Path (Join-Path $updaterOutput "CodexBar.Updater.*") -Destination $packageRoot -Force
 Get-ChildItem -LiteralPath $packageRoot -Filter "*.pdb" -File -ErrorAction SilentlyContinue | Remove-Item -Force
 Copy-Item -LiteralPath (Join-Path $root "README.md") -Destination (Join-Path $packageRoot "README.md")
 Copy-Item -LiteralPath (Join-Path $root "CHANGELOG.md") -Destination (Join-Path $packageRoot "CHANGELOG.md")
@@ -132,12 +148,18 @@ Recommended launchers:
 - start-codexbar.cmd
 - open-settings.cmd
 
+Bundled helper:
+- CodexBar.Updater.exe (used by Settings > About > Update for assisted portable updates)
+
 This package includes a local .dotnet runtime under .dotnet\ and does not require a global .NET install.
 "@
 Set-Content -LiteralPath (Join-Path $packageRoot "PACKAGE_INFO.txt") -Value $packageNotes -Encoding UTF8
 
 if (-not $NoZip) {
     Compress-Archive -LiteralPath $packageRoot -DestinationPath $zipPath -CompressionLevel Optimal
+    $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $zipHashLine = "$zipHash  $(Split-Path -Leaf $zipPath)"
+    Set-Content -LiteralPath "$zipPath.sha256" -Value $zipHashLine -Encoding ASCII
 }
 
 Write-Host "version=$version"
@@ -145,4 +167,5 @@ Write-Host "build_output=$buildOutput"
 Write-Host "package_root=$packageRoot"
 if (-not $NoZip) {
     Write-Host "zip_path=$zipPath"
+    Write-Host "sha256_path=$zipPath.sha256"
 }

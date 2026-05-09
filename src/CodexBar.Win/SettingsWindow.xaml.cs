@@ -24,11 +24,17 @@ public partial class SettingsWindow : Window
     private readonly AppConfigStore _configStore;
     private readonly StartupRegistration _startup = new();
     private readonly WindowsCredentialSecretStore _secretStore = new();
+    private readonly UpdateService _updateService = new();
+    private readonly UpdateInstallerLauncher _updateInstallerLauncher = new();
     private readonly Func<bool>? _overlayVisibleProvider;
     private readonly Func<bool, Task>? _overlayVisibilityChanged;
     private readonly Func<Task>? _settingsSaved;
     private AppConfig _config = AppConfigStore.DefaultConfig();
     private bool _suppressOverlayToggle;
+    private UpdateReleaseInfo? _availableUpdate;
+    private UpdateDownloadResult? _downloadedUpdate;
+    private DateTimeOffset? _lastUpdateCheckAt;
+    private string _lastUpdateStatus = "\u5C1A\u672A\u68C0\u67E5\u66F4\u65B0\u3002";
 
     public SettingsWindow(
         Func<bool>? overlayVisibleProvider = null,
@@ -47,6 +53,7 @@ public partial class SettingsWindow : Window
         ActivationBehaviorBox.ItemsSource = BuildActivationBehaviorOptions();
         OpenAiAccountModeBox.ItemsSource = BuildOpenAiModeOptions();
         AccountCardDensityBox.ItemsSource = BuildAccountCardDensityOptions();
+        ResetUpdateControls();
         SettingsNavList.SelectedIndex = 0;
         ShowSettingsPage("runtime");
         Loaded += async (_, _) => await LoadConfigAsync();
@@ -70,6 +77,7 @@ public partial class SettingsWindow : Window
         SyncOverlayState(_overlayVisibleProvider?.Invoke() == true);
         UpdateRestartPromptState();
         UpdateAboutPage(home);
+        RefreshUpdateControls();
         StatusText.Text = "\u5C31\u7EEA\u3002";
     }
 
@@ -422,6 +430,317 @@ public partial class SettingsWindow : Window
         {
             StatusText.Text = $"\u6253\u5F00 GitHub \u5931\u8D25\uFF1A{DiagnosticLogger.Redact(ex.Message)}";
         }
+    }
+
+    private async void CheckForUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        await CheckForUpdatesAsync();
+    }
+
+    private async Task<UpdateCheckResult?> CheckForUpdatesAsync()
+    {
+        try
+        {
+            SetUpdateBusy(true, "\u6B63\u5728\u68C0\u67E5 GitHub Release...");
+            _downloadedUpdate = null;
+            var result = await _updateService.CheckLatestAsync(AppVersion());
+            _lastUpdateCheckAt = result.CheckedAt;
+            _lastUpdateStatus = result.Message;
+            _availableUpdate = result.HasUpdate ? result.Release : null;
+            UpdateProgressBar.Value = 0;
+            RefreshUpdateControls();
+            StatusText.Text = result.Message;
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _lastUpdateStatus = DiagnosticLogger.Redact(ex.Message);
+            RefreshUpdateControls();
+            StatusText.Text = _lastUpdateStatus;
+            return null;
+        }
+        finally
+        {
+            SetUpdateBusy(false);
+        }
+    }
+
+    private async void DownloadUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_availableUpdate is null)
+            {
+                var check = await CheckForUpdatesAsync();
+                if (check?.Release is null || !check.HasUpdate)
+                {
+                    return;
+                }
+            }
+
+            var release = _availableUpdate;
+            if (release is null)
+            {
+                return;
+            }
+
+            SetUpdateBusy(true, $"\u6B63\u5728\u4E0B\u8F7D v{release.Version}...");
+            var progress = new Progress<UpdateDownloadProgress>(value =>
+            {
+                if (value.Percent.HasValue)
+                {
+                    UpdateProgressBar.Value = Math.Max(0, Math.Min(100, value.Percent.Value));
+                    UpdateStatusText.Text = $"\u6B63\u5728\u4E0B\u8F7D\uFF1A{value.BytesReceived:n0} / {value.TotalBytes:n0} bytes";
+                }
+                else
+                {
+                    UpdateStatusText.Text = $"\u6B63\u5728\u4E0B\u8F7D\uFF1A{value.BytesReceived:n0} bytes";
+                }
+            });
+            _downloadedUpdate = await _updateService.DownloadUpdateAsync(release, progress: progress);
+            _lastUpdateStatus = _downloadedUpdate.Message;
+            RefreshUpdateControls();
+            StatusText.Text = _downloadedUpdate.Message;
+            if (_downloadedUpdate.Success)
+            {
+                await ConfirmAndInstallDownloadedUpdateAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _lastUpdateStatus = DiagnosticLogger.Redact(ex.Message);
+            RefreshUpdateControls();
+            StatusText.Text = _lastUpdateStatus;
+        }
+        finally
+        {
+            SetUpdateBusy(false);
+        }
+    }
+
+    private async void InstallDownloadedUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        await ConfirmAndInstallDownloadedUpdateAsync();
+    }
+
+    private async Task ConfirmAndInstallDownloadedUpdateAsync()
+    {
+        if (_availableUpdate is null || _downloadedUpdate?.Success != true || string.IsNullOrWhiteSpace(_downloadedUpdate.ZipPath))
+        {
+            StatusText.Text = "\u8BF7\u5148\u4E0B\u8F7D\u5E76\u6821\u9A8C\u66F4\u65B0\u5305\u3002";
+            return;
+        }
+
+        if (!ShowUpdateConfirmation(_availableUpdate, _downloadedUpdate))
+        {
+            _lastUpdateStatus = "\u66F4\u65B0\u5DF2\u6682\u7F13\u3002";
+            RefreshUpdateControls();
+            StatusText.Text = _lastUpdateStatus;
+            return;
+        }
+
+        try
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "CodexBarUpdate");
+            var request = UpdateInstallerLauncher.CreateInstallRequest(
+                Environment.ProcessId,
+                AppContext.BaseDirectory,
+                _downloadedUpdate.ZipPath,
+                _availableUpdate.Version.ToString(),
+                "CodexBar.Win.exe",
+                tempRoot);
+            var helperPath = Path.Combine(AppContext.BaseDirectory, "CodexBar.Updater.exe");
+            var launch = await _updateInstallerLauncher.PrepareAndLaunchAsync(helperPath, request);
+            _lastUpdateStatus = launch.Message;
+            RefreshUpdateControls();
+            if (!launch.Started)
+            {
+                StatusText.Text = launch.Message;
+                System.Windows.MessageBox.Show(
+                    this,
+                    launch.Message,
+                    "CodexBar \u66F4\u65B0",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            StatusText.Text = "\u66F4\u65B0\u5668\u5DF2\u542F\u52A8\uFF0CCodexBar \u5C06\u9000\u51FA\u5E76\u5B8C\u6210\u66FF\u6362\u3002";
+            System.Windows.Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            _lastUpdateStatus = DiagnosticLogger.Redact(ex.Message);
+            RefreshUpdateControls();
+            StatusText.Text = _lastUpdateStatus;
+        }
+    }
+
+    private void OpenReleasePage_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var url = _availableUpdate?.ReleasePageUrl.ToString() ?? UpdateService.BuildReleasePageUrl();
+            Process.Start(new ProcessStartInfo(url)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"\u6253\u5F00 Release \u9875\u5931\u8D25\uFF1A{DiagnosticLogger.Redact(ex.Message)}";
+        }
+    }
+
+    private void CopyUpdateDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        System.Windows.Clipboard.SetText(BuildUpdateDiagnostics());
+        StatusText.Text = "\u66F4\u65B0\u8BCA\u65AD\u4FE1\u606F\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\u3002";
+    }
+
+    private bool ShowUpdateConfirmation(UpdateReleaseInfo release, UpdateDownloadResult download)
+    {
+        var checksum = download.Checksum;
+        var checksumText = checksum is null
+            ? "\u6821\u9A8C\uFF1A\u672A\u77E5"
+            : checksum.HasOfficialChecksum
+                ? $"SHA256\uFF1A{checksum.CalculatedSha256}\n\u5B98\u65B9 checksum\uFF1A\u5DF2\u5339\u914D"
+                : $"SHA256\uFF1A{checksum.CalculatedSha256}\n\u8B66\u544A\uFF1ARelease \u672A\u63D0\u4F9B\u5B98\u65B9 checksum\uFF0C\u8BF7\u6838\u5BF9\u540E\u518D\u7EE7\u7EED";
+        var message = string.Join(Environment.NewLine + Environment.NewLine, new[]
+        {
+            $"\u5F53\u524D\u7248\u672C\uFF1Av{AppVersion()}",
+            $"\u76EE\u6807\u7248\u672C\uFF1Av{release.Version}",
+            $"\u66F4\u65B0\u6458\u8981\uFF1A\n{release.Summary}",
+            checksumText,
+            "\u70B9\u51FB\u201C\u7ACB\u5373\u66F4\u65B0\u201D\u540E\uFF0CCodexBar \u4F1A\u5173\u95ED\u81EA\u8EAB\uFF0C\u66FF\u6362\u5F53\u524D\u7A0B\u5E8F\u76EE\u5F55\uFF0C\u7136\u540E\u91CD\u542F\u65B0\u7248 CodexBar\u3002",
+            "\u6B64\u6D41\u7A0B\u4E0D\u4F1A\u89E6\u78B0 Codex Desktop\uFF0C\u4E0D\u4F1A\u4FEE\u6539 shared ~/.codex history pool\u3001sessions\u3001archived_sessions\u3001config.toml\u3001auth.json\u3001token \u6216 %USERPROFILE%\\.codexbar\u3002"
+        });
+
+        var window = new Window
+        {
+            Owner = this,
+            Title = "CodexBar \u66F4\u65B0\u786E\u8BA4",
+            Width = 560,
+            Height = 460,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            Background = System.Windows.Media.Brushes.White
+        };
+
+        var grid = new Grid
+        {
+            Margin = new Thickness(18),
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+                new RowDefinition { Height = GridLength.Auto }
+            }
+        };
+        var content = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = new TextBlock
+            {
+                Text = message,
+                TextWrapping = TextWrapping.Wrap,
+                FontFamily = new System.Windows.Media.FontFamily("Microsoft YaHei UI"),
+                FontSize = 12,
+                Foreground = System.Windows.Media.Brushes.Black
+            }
+        };
+        grid.Children.Add(content);
+
+        var buttons = new StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            Margin = new Thickness(0, 16, 0, 0)
+        };
+        var later = new System.Windows.Controls.Button
+        {
+            Content = "\u7A0D\u540E",
+            Width = 90,
+            Height = 34,
+            Margin = new Thickness(0, 0, 8, 0)
+        };
+        later.Click += (_, _) =>
+        {
+            window.DialogResult = false;
+            window.Close();
+        };
+        var install = new System.Windows.Controls.Button
+        {
+            Content = "\u7ACB\u5373\u66F4\u65B0",
+            Width = 96,
+            Height = 34
+        };
+        install.Click += (_, _) =>
+        {
+            window.DialogResult = true;
+            window.Close();
+        };
+        buttons.Children.Add(later);
+        buttons.Children.Add(install);
+        Grid.SetRow(buttons, 1);
+        grid.Children.Add(buttons);
+        window.Content = grid;
+
+        return window.ShowDialog() == true;
+    }
+
+    private void ResetUpdateControls()
+    {
+        _availableUpdate = null;
+        _downloadedUpdate = null;
+        RefreshUpdateControls();
+    }
+
+    private void RefreshUpdateControls()
+    {
+        UpdateCurrentVersionText.Text = $"\u5F53\u524D\u7248\u672C\uFF1Av{AppVersion()}";
+        UpdateLatestVersionText.Text = _availableUpdate is null
+            ? "\u6700\u65B0\u7248\u672C\uFF1A\u5C1A\u672A\u68C0\u6D4B\u5230\u53EF\u7528\u66F4\u65B0"
+            : $"\u6700\u65B0\u7248\u672C\uFF1Av{_availableUpdate.Version}";
+        UpdateLastCheckedText.Text = _lastUpdateCheckAt.HasValue
+            ? $"\u6700\u8FD1\u68C0\u67E5\uFF1A{_lastUpdateCheckAt.Value.LocalDateTime:yyyy-MM-dd HH:mm:ss}"
+            : "\u6700\u8FD1\u68C0\u67E5\uFF1A\u5C1A\u672A\u68C0\u67E5";
+        UpdateStatusText.Text = _lastUpdateStatus;
+        DownloadUpdateButton.IsEnabled = _availableUpdate is not null;
+        InstallDownloadedUpdateButton.IsEnabled = _downloadedUpdate?.Success == true;
+        OpenReleasePageButton.IsEnabled = true;
+    }
+
+    private void SetUpdateBusy(bool isBusy, string? status = null)
+    {
+        CheckForUpdatesButton.IsEnabled = !isBusy;
+        DownloadUpdateButton.IsEnabled = !isBusy && _availableUpdate is not null;
+        InstallDownloadedUpdateButton.IsEnabled = !isBusy && _downloadedUpdate?.Success == true;
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            _lastUpdateStatus = status;
+            UpdateStatusText.Text = status;
+        }
+    }
+
+    private string BuildUpdateDiagnostics()
+    {
+        var lines = new List<string>
+        {
+            "CodexBar update diagnostics",
+            $"Current version: {AppVersion()}",
+            $"Latest version: {(_availableUpdate is null ? "not checked or none" : _availableUpdate.Version.ToString())}",
+            $"Last checked: {(_lastUpdateCheckAt.HasValue ? _lastUpdateCheckAt.Value.ToString("O") : "never")}",
+            $"Status: {_lastUpdateStatus}",
+            $"Release page: {(_availableUpdate?.ReleasePageUrl.ToString() ?? UpdateService.BuildReleasePageUrl())}",
+            $"Zip asset: {_availableUpdate?.ZipAsset.Name ?? "none"}",
+            $"Downloaded zip: {_downloadedUpdate?.ZipPath ?? "none"}",
+            $"Checksum: {_downloadedUpdate?.Checksum?.CalculatedSha256 ?? "none"}",
+            $"Official checksum: {(_downloadedUpdate?.Checksum?.HasOfficialChecksum == true ? "yes" : "no")}",
+            $"Install directory: {AppContext.BaseDirectory}",
+            $"Updater helper: {Path.Combine(AppContext.BaseDirectory, "CodexBar.Updater.exe")}"
+        };
+        return string.Join(Environment.NewLine, lines);
     }
 
     private void CopyDiagnostics_Click(object sender, RoutedEventArgs e)

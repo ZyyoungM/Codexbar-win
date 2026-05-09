@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.IO.Compression;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using CodexBar.Auth;
@@ -96,7 +97,17 @@ var tests = new (string Name, Func<Task> Run)[]
     ("session archive rejects unsafe zip paths", SessionArchiveUnsafePathTest),
     ("account csv imports compatible secrets", AccountCsvCompatibleSecretTest),
     ("account csv preserves oauth workspace metadata", AccountCsvOAuthWorkspaceMetadataTest),
-    ("account csv exports oauth metadata without secrets by default", AccountCsvOAuthSecretSafetyTest)
+    ("account csv exports oauth metadata without secrets by default", AccountCsvOAuthSecretSafetyTest),
+    ("update semver comparison handles stable and prerelease versions", UpdateSemverComparisonTest),
+    ("update check ignores draft and prerelease releases", UpdateCheckIgnoresDraftAndPrereleaseTest),
+    ("update check selects matching portable zip asset", UpdateCheckSelectsPortableZipAssetTest),
+    ("update checksum verification accepts matching official checksum", UpdateChecksumMatchTest),
+    ("update checksum verification rejects mismatched official checksum", UpdateChecksumMismatchTest),
+    ("update check reports network failures readably", UpdateCheckNetworkFailureTest),
+    ("update launcher refuses dangerous target directories", UpdateLauncherDangerousTargetDirectoryTest),
+    ("updater helper refuses windows system directories", UpdaterHelperRefusesWindowsSystemDirectoryTest),
+    ("update launcher arguments avoid codex history and credential paths", UpdateLauncherArgumentsAvoidSensitivePathsTest),
+    ("update check skips current or older remote versions", UpdateCheckSkipsCurrentOrOlderVersionsTest)
 };
 
 var failed = 0;
@@ -2724,6 +2735,301 @@ static async Task AccountCsvOAuthSecretSafetyTest()
     var secretText = await File.ReadAllTextAsync(withSecrets);
     AssertContains(secretText, "access-secret");
     AssertContains(secretText, "refresh-secret");
+}
+
+static Task UpdateSemverComparisonTest()
+{
+    AssertTrue(SemanticVersion.Parse("v0.3.5").CompareTo(SemanticVersion.Parse("0.3.4")) > 0);
+    AssertTrue(SemanticVersion.Parse("1.0.0-alpha").CompareTo(SemanticVersion.Parse("1.0.0")) < 0);
+    AssertTrue(SemanticVersion.Parse("1.0.0-alpha.2").CompareTo(SemanticVersion.Parse("1.0.0-alpha.10")) < 0);
+    AssertTrue(SemanticVersion.TryParse("release-latest", out _) == false);
+    return Task.CompletedTask;
+}
+
+static async Task UpdateCheckIgnoresDraftAndPrereleaseTest()
+{
+    var releasesJson = """
+        [
+          {
+            "tag_name": "v9.0.0",
+            "name": "Draft",
+            "draft": true,
+            "prerelease": false,
+            "html_url": "https://example.test/draft",
+            "body": "draft",
+            "published_at": "2026-05-01T00:00:00Z",
+            "assets": []
+          },
+          {
+            "tag_name": "v8.0.0-beta.1",
+            "name": "Beta",
+            "draft": false,
+            "prerelease": true,
+            "html_url": "https://example.test/beta",
+            "body": "beta",
+            "published_at": "2026-05-02T00:00:00Z",
+            "assets": [
+              {
+                "name": "CodexBar-portable-win-x64-v8.0.0-beta.1.zip",
+                "browser_download_url": "https://example.test/beta.zip",
+                "size": 10
+              }
+            ]
+          },
+          {
+            "tag_name": "v0.3.5",
+            "name": "Stable",
+            "draft": false,
+            "prerelease": false,
+            "html_url": "https://example.test/stable",
+            "body": "stable release",
+            "published_at": "2026-05-03T00:00:00Z",
+            "assets": [
+              {
+                "name": "CodexBar-portable-win-x64-v0.3.5.zip",
+                "browser_download_url": "https://example.test/stable.zip",
+                "size": 20
+              }
+            ]
+          }
+        ]
+        """;
+    var service = NewUpdateService(releasesJson);
+
+    var result = await service.CheckLatestAsync("0.3.4");
+
+    AssertEqual(UpdateCheckStatus.UpdateAvailable, result.Status);
+    AssertEqual("0.3.5", result.Release?.Version.ToString());
+    AssertEqual("CodexBar-portable-win-x64-v0.3.5.zip", result.Release?.ZipAsset.Name);
+}
+
+static async Task UpdateCheckSelectsPortableZipAssetTest()
+{
+    var releasesJson = """
+        [
+          {
+            "tag_name": "v0.4.0",
+            "name": "Release",
+            "draft": false,
+            "prerelease": false,
+            "html_url": "https://example.test/release",
+            "body": "Line one.\n\nLine two.",
+            "published_at": "2026-05-03T00:00:00Z",
+            "assets": [
+              {
+                "name": "source.zip",
+                "browser_download_url": "https://example.test/source.zip",
+                "size": 1
+              },
+              {
+                "name": "CodexBar-portable-win-x64-v0.4.0.zip.sha256",
+                "browser_download_url": "https://example.test/checksum",
+                "size": 64
+              },
+              {
+                "name": "CodexBar-portable-win-x64-v0.4.0.zip",
+                "browser_download_url": "https://example.test/app.zip",
+                "size": 12345
+              }
+            ]
+          }
+        ]
+        """;
+    var service = NewUpdateService(releasesJson);
+
+    var result = await service.CheckLatestAsync("0.3.4");
+
+    AssertEqual(UpdateCheckStatus.UpdateAvailable, result.Status);
+    AssertEqual("CodexBar-portable-win-x64-v0.4.0.zip", result.Release?.ZipAsset.Name);
+    AssertEqual(12345L, result.Release?.ZipAsset.SizeBytes);
+    AssertEqual("CodexBar-portable-win-x64-v0.4.0.zip.sha256", result.Release?.ChecksumAsset?.Name);
+    AssertContains(result.Release?.Summary ?? "", "Line one.");
+}
+
+static async Task UpdateChecksumMatchTest()
+{
+    using var temp = TempDir.Create();
+    var packagePath = Path.Combine(temp.Path, "CodexBar-portable-win-x64-v0.3.5.zip");
+    await File.WriteAllTextAsync(packagePath, "package");
+    var expected = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("package"))).ToLowerInvariant();
+
+    var result = await UpdateChecksumVerifier.VerifyAsync(
+        packagePath,
+        $"{expected}  CodexBar-portable-win-x64-v0.3.5.zip",
+        "CodexBar-portable-win-x64-v0.3.5.zip");
+
+    AssertTrue(result.IsMatch, result.Message);
+    AssertTrue(result.HasOfficialChecksum);
+    AssertEqual(expected, result.CalculatedSha256);
+}
+
+static async Task UpdateChecksumMismatchTest()
+{
+    using var temp = TempDir.Create();
+    var packagePath = Path.Combine(temp.Path, "CodexBar-portable-win-x64-v0.3.5.zip");
+    await File.WriteAllTextAsync(packagePath, "package");
+
+    var result = await UpdateChecksumVerifier.VerifyAsync(
+        packagePath,
+        new string('0', 64) + "  CodexBar-portable-win-x64-v0.3.5.zip",
+        "CodexBar-portable-win-x64-v0.3.5.zip");
+
+    AssertTrue(!result.IsMatch);
+    AssertContains(result.Message, "SHA256");
+}
+
+static async Task UpdateCheckNetworkFailureTest()
+{
+    var service = new UpdateService(
+        new HttpClient(new StubHttpMessageHandler(_ => throw new HttpRequestException("offline"))),
+        new UpdateServiceOptions("owner", "repo"));
+
+    var result = await service.CheckLatestAsync("0.3.4");
+
+    AssertEqual(UpdateCheckStatus.NetworkError, result.Status);
+    AssertContains(result.Message, "网络");
+    AssertContains(result.Message, "offline");
+}
+
+static Task UpdateLauncherDangerousTargetDirectoryTest()
+{
+    using var temp = TempDir.Create();
+    var userHome = Path.Combine(temp.Path, "user");
+    Directory.CreateDirectory(userHome);
+    var driveRoot = Path.GetPathRoot(Path.GetFullPath(temp.Path)) ?? temp.Path;
+    var windowsDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+
+    AssertTrue(!UpdateInstallerLauncher.ValidateInstallDirectory("", userHome).IsValid);
+    AssertTrue(!UpdateInstallerLauncher.ValidateInstallDirectory(driveRoot, userHome).IsValid);
+    AssertTrue(!UpdateInstallerLauncher.ValidateInstallDirectory(userHome, userHome).IsValid);
+    AssertTrue(!UpdateInstallerLauncher.ValidateInstallDirectory(Path.Combine(userHome, ".codex"), userHome).IsValid);
+    AssertTrue(!UpdateInstallerLauncher.ValidateInstallDirectory(Path.Combine(userHome, ".codexbar"), userHome).IsValid);
+    if (!string.IsNullOrWhiteSpace(windowsDirectory))
+    {
+        AssertTrue(!UpdateInstallerLauncher.ValidateInstallDirectory(windowsDirectory, userHome).IsValid);
+        AssertTrue(!UpdateInstallerLauncher.ValidateInstallDirectory(Path.Combine(windowsDirectory, "System32"), userHome).IsValid);
+    }
+
+    AssertTrue(UpdateInstallerLauncher.ValidateInstallDirectory(Path.Combine(temp.Path, "CodexBar"), userHome).IsValid);
+    return Task.CompletedTask;
+}
+
+static Task UpdaterHelperRefusesWindowsSystemDirectoryTest()
+{
+    var windowsDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+    AssertTrue(!string.IsNullOrWhiteSpace(windowsDirectory), "Windows directory was not available.");
+
+    AssertUpdaterHelperRejectsDirectory(windowsDirectory);
+    AssertUpdaterHelperRejectsDirectory(Path.Combine(windowsDirectory, "System32"));
+    return Task.CompletedTask;
+}
+
+static Task UpdateLauncherArgumentsAvoidSensitivePathsTest()
+{
+    using var temp = TempDir.Create();
+    var installDirectory = Path.Combine(temp.Path, "CodexBar");
+    var helperPath = Path.Combine(temp.Path, "helper", "CodexBar.Updater.exe");
+    var zipPath = Path.Combine(temp.Path, "downloads", "CodexBar-portable-win-x64-v0.3.5.zip");
+    var userHome = Path.Combine(temp.Path, "user");
+    Directory.CreateDirectory(installDirectory);
+    Directory.CreateDirectory(Path.GetDirectoryName(helperPath)!);
+    Directory.CreateDirectory(Path.GetDirectoryName(zipPath)!);
+    File.WriteAllText(helperPath, "fake");
+    File.WriteAllText(zipPath, "fake");
+
+    var request = UpdateInstallerLauncher.CreateInstallRequest(
+        currentProcessId: 123,
+        installDirectory: installDirectory,
+        zipPath: zipPath,
+        targetVersion: "0.3.5",
+        restartExecutableName: "CodexBar.Win.exe",
+        tempRoot: Path.Combine(temp.Path, "update-temp"),
+        userProfile: userHome);
+    var startInfo = UpdateInstallerLauncher.BuildStartInfo(helperPath, request);
+    var arguments = string.Join(" ", startInfo.ArgumentList);
+
+    AssertDoesNotContain(arguments, ".codex");
+    AssertDoesNotContain(arguments, "auth.json");
+    AssertDoesNotContain(arguments, "sessions");
+    AssertTrue(!HasEnvironmentVariable(startInfo, "CODEX_HOME"));
+    AssertTrue(!HasEnvironmentVariable(startInfo, "OPENAI_API_KEY"));
+    AssertEqual(Path.GetDirectoryName(helperPath), startInfo.WorkingDirectory);
+    return Task.CompletedTask;
+}
+
+static async Task UpdateCheckSkipsCurrentOrOlderVersionsTest()
+{
+    var releasesJson = """
+        [
+          {
+            "tag_name": "v0.3.4",
+            "name": "Current",
+            "draft": false,
+            "prerelease": false,
+            "html_url": "https://example.test/current",
+            "body": "current",
+            "published_at": "2026-05-03T00:00:00Z",
+            "assets": [
+              {
+                "name": "CodexBar-portable-win-x64-v0.3.4.zip",
+                "browser_download_url": "https://example.test/current.zip",
+                "size": 20
+              }
+            ]
+          },
+          {
+            "tag_name": "v0.3.3",
+            "name": "Older",
+            "draft": false,
+            "prerelease": false,
+            "html_url": "https://example.test/older",
+            "body": "older",
+            "published_at": "2026-05-02T00:00:00Z",
+            "assets": [
+              {
+                "name": "CodexBar-portable-win-x64-v0.3.3.zip",
+                "browser_download_url": "https://example.test/older.zip",
+                "size": 20
+              }
+            ]
+          }
+        ]
+        """;
+    var service = NewUpdateService(releasesJson);
+
+    var result = await service.CheckLatestAsync("0.3.4");
+
+    AssertEqual(UpdateCheckStatus.UpToDate, result.Status);
+    AssertTrue(!result.HasUpdate);
+}
+
+static UpdateService NewUpdateService(string releasesJson)
+    => new(
+        new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(releasesJson, Encoding.UTF8, "application/json")
+        })),
+        new UpdateServiceOptions("owner", "repo"));
+
+static void AssertUpdaterHelperRejectsDirectory(string installDirectory)
+{
+    var assemblyPath = Path.Combine(AppContext.BaseDirectory, "CodexBar.Updater.dll");
+    var assembly = Assembly.LoadFrom(assemblyPath);
+    var safetyType = assembly.GetType("CodexBar.Updater.UpdateSafety")
+        ?? throw new Exception("Updater safety type was not found.");
+    var method = safetyType.GetMethod("ValidateInstallDirectory", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+        ?? throw new Exception("Updater safety method was not found.");
+
+    try
+    {
+        method.Invoke(null, [installDirectory]);
+    }
+    catch (TargetInvocationException ex) when (ex.InnerException is InvalidOperationException)
+    {
+        return;
+    }
+
+    throw new Exception($"Updater helper accepted unsafe install directory: {installDirectory}");
 }
 
 static string CreateUnsignedJwt(string payloadJson)

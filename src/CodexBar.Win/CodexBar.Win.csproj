@@ -11,10 +11,19 @@
     <ProjectReference Include="..\CodexBar.CodexCompat\CodexBar.CodexCompat.csproj" />
     <ProjectReference Include="..\CodexBar.Auth\CodexBar.Auth.csproj" />
     <ProjectReference Include="..\CodexBar.Runtime\CodexBar.Runtime.csproj" />
+    <ProjectReference Include="..\CodexBar.Updater\CodexBar.Updater.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Assets\CodexBar.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+  <Target Name="CopyUpdaterHelper" AfterTargets="Build">
+    <ItemGroup>
+      <UpdaterHelperFiles Include="..\CodexBar.Updater\bin\$(Configuration)\net8.0-windows\CodexBar.Updater.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(UpdaterHelperFiles)"
+          DestinationFolder="$(TargetDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>

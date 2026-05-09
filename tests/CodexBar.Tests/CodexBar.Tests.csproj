@@ -9,5 +9,6 @@
     <ProjectReference Include="..\..\src\CodexBar.CodexCompat\CodexBar.CodexCompat.csproj" />
     <ProjectReference Include="..\..\src\CodexBar.Auth\CodexBar.Auth.csproj" />
     <ProjectReference Include="..\..\src\CodexBar.Runtime\CodexBar.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\CodexBar.Updater\CodexBar.Updater.csproj" />
   </ItemGroup>
 </Project>

@@ -3,7 +3,7 @@
 
 # CodexBar for Windows
 
-Current version: `v0.3.4`
+Current version: `v0.3.5`
 
 CodexBar for Windows is a Windows-native port of the macOS project [`lizhelang/codexbar`](https://github.com/lizhelang/codexbar). The goal is not to rebuild Codex itself, but to provide a smoother Windows entry point for switching accounts and providers while letting you manage official OpenAI accounts and third-party compatible APIs **without splitting the local `.codex` history pool**.
 
@@ -33,11 +33,11 @@ The day-to-day experience of CodexBar for Windows mainly revolves around two UI 
 
 ### Option 1: Recommended portable package (download and run)
 
-If you just want to use CodexBar directly, the recommended path is to download `CodexBar-portable-win-x64-v0.3.4.zip` from the release page.
+If you just want to use CodexBar directly, the recommended path is to download `CodexBar-portable-win-x64-v0.3.5.zip` from the release page.
 
 After downloading the archive, you can get started in 3 steps:
 
-1. Extract `CodexBar-portable-win-x64-v0.3.4.zip`
+1. Extract `CodexBar-portable-win-x64-v0.3.5.zip`
 2. Open the extracted folder
 3. Double-click `start-codexbar.cmd`
 
@@ -87,6 +87,7 @@ dotnet run --project .\src\CodexBar.Win\CodexBar.Win.csproj
 - Launch or explicitly restart Codex from the GUI and inject the active API key for compatible providers
 - Quickly view and switch the current account/API from the tray right-click menu
 - Export/import account configuration and session-history ZIP archives from Settings
+- Check GitHub Releases, download the portable ZIP, verify SHA256, and hand off confirmed installs to a standalone updater helper from Settings > About > Update
 - Support basic tray interactions, paged Settings, the OAuth login window, and the compatible-provider management window
 
 ## Compatibility Commitments
@@ -164,6 +165,7 @@ dotnet run --project .\src\CodexBar.Cli\CodexBar.Cli.csproj -- import-history --
 - **Switching only affects new sessions.** Running Codex processes are not rewritten in place.
 - **If Codex Desktop is already open, the main flyout launch path asks before restarting it.** After confirmation, CodexBar closes the current window and background process, then starts a fresh Codex instance; environment variables only flow into new processes.
 - **If the machine does not have a global `.NET`, do not double-click the exe under `bin` directly.** Prefer the portable-package launcher scripts or the repository scripts.
+- **Assisted updates only replace the CodexBar program directory.** They do not touch Codex Desktop, the shared `~/.codex` history pool, `sessions`, `archived_sessions`, `config.toml`, `auth.json`, tokens, or `%USERPROFILE%\.codexbar`.
 - **Compatible-provider connectivity probing is based on `/models`.** If probing fails, first check whether the `Base URL` is missing `/v1`.
 - **Browser access to the local API is restricted to trusted loopback origins only.** The current allowlist is `http://127.0.0.1:5057` / `http://localhost:5057` / `http://127.0.0.1:5173` / `http://localhost:5173` / `http://127.0.0.1:4173` / `http://localhost:4173`; this keeps the local API itself and the frontend rebuild dev/preview entry points working while blocking arbitrary web pages from reading or mutating the local API across origins.
 
@@ -183,6 +185,14 @@ The Windows porting work in this project builds on the product direction and imp
 ## Version Summary
 
 `README.md` only keeps a short summary of changes relative to the previous version. For full details, see [CHANGELOG.md](./CHANGELOG.md).
+
+### v0.3.5 - 2026-05-09
+
+- Added a Settings / About update section for checking stable GitHub Releases, showing current/latest versions, downloading the portable ZIP, tracking progress, and copying update diagnostics
+- Added the standalone `CodexBar.Updater.exe` helper: after the main app exits, it backs up the current program directory, extracts the new package, replaces the program directory, and restarts `CodexBar.Win.exe`
+- Downloads now verify file size and prefer official `.sha256` assets; when no checksum asset exists, CodexBar computes and displays the local SHA256 with a warning
+- Assisted updates explicitly preserve shared `.codex` history, accounts, tokens, `config.toml` / `auth.json`, and `%USERPROFILE%\.codexbar`; dangerous target directories are rejected
+- Fixed local usage scanning for cumulative Codex JSONL token snapshots so lifetime and range totals are not inflated by double counting
 
 ### v0.3.4 - 2026-05-06
 

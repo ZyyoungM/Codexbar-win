@@ -1,6 +1,6 @@
 # CodexBar Windows Implementation Progress
 
-Last updated: 2026-05-06
+Last updated: 2026-05-09
 
 This file is the project progress ledger. Whenever a feature is added, changed, removed, or meaningfully fixed, update this document in the same change.
 
@@ -58,7 +58,7 @@ The current implementation is a working MVP with a native tray-window model (`Ma
 | Codex Desktop / CLI path settings | `[x]` | Config model, CLI, Settings UI, detection, and launch fallback are wired. GUI launch re-syncs active account into `config.toml` / `auth.json` before starting Codex, Desktop launch cleans inherited Codex/Electron internal environment variables, and Desktop detection prefers the newest WindowsApps / MSIX Codex package instead of a stale version-pinned path. |
 | Activation behavior setting | `[x]` | `WriteConfigOnly` and `LaunchNewCodex` are both wired. |
 | OpenAI manual / aggregate mode | `[~]` | `ManualSwitch` works directly. `AggregateGateway` currently performs activation-time OpenAI auto-routing; it is not yet a live request proxy. |
-| GitHub Releases update check | `[ ]` | Not implemented. |
+| GitHub Releases update check | `[x]` | Settings / About can check stable GitHub Releases, ignore draft/prerelease builds, compare semver against the app version, select the matching portable zip asset, download with progress, verify size/SHA256, and launch an external updater helper after user confirmation. |
 | Real installer / self-contained publish | `[~]` | `package.ps1` 可生成包含本地 `.dotnet` 运行时的便携发布目录与 zip 包；正式 self-contained / installer（MSIX / MSI）仍未实现。 |
 
 ## Verification Status
@@ -74,7 +74,7 @@ Latest known result:
 
 ```text
 build: succeeded, 0 warnings, 0 errors
-tests: 74 passed
+tests: 84 passed
 ```
 
 Current automated coverage includes:
@@ -124,6 +124,12 @@ Current automated coverage includes:
 - OpenAI OAuth workspace metadata CSV export/import
 - compatible-provider token reset marker CSV export/import
 - OAuth CSV default secret exclusion
+- update semver comparison
+- GitHub Release draft/prerelease filtering and portable zip asset selection
+- update checksum match/mismatch behavior
+- update network-failure messaging
+- updater launcher dangerous-directory rejection and sensitive-argument stripping
+- updater helper Windows system-directory rejection
 
 ## Manual Test Commands
 
@@ -184,6 +190,15 @@ Enable aggregate mode in app config:
 ```
 
 ## Recent Change Log
+
+### 2026-05-09
+
+- Bumped project version metadata to `0.3.5` and aligned README / CHANGELOG / implementation-progress notes around assisted portable updates.
+- Added GitHub Release update checking, portable zip download progress, size/SHA256 verification, update diagnostics, and a user-confirmation install flow in Settings / About.
+- Added `CodexBar.Updater.exe` as an external helper that waits for the main process to exit, backs up the current program directory, stages the new package, replaces the app directory, rolls back on failure where possible, and restarts `CodexBar.Win.exe`.
+- Included the cumulative-token usage scanner fix in the `v0.3.5` release notes so the local-only `e931afc` baseline is reflected in the release candidate.
+- Added helper-side Windows system-directory rejection so updater safety does not rely only on main-process argument validation.
+- Updated `package.ps1` to build/copy the updater helper into the portable package and emit a `.zip.sha256` sidecar for Release publishing.
 
 ### 2026-05-06
 
