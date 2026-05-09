@@ -28,6 +28,10 @@ public sealed class UsageScanner
                 long input = 0;
                 long output = 0;
                 long cached = 0;
+                long cumulativeInput = 0;
+                long cumulativeOutput = 0;
+                long cumulativeCached = 0;
+                var hasCumulativeUsage = false;
                 var events = 0;
                 DateTimeOffset? startedAt = null;
                 var fallbackUtc = SafeGetLastWriteTimeUtc(path);
@@ -50,15 +54,33 @@ public sealed class UsageScanner
                         }
 
                         startedAt ??= usageEvent.Timestamp;
-                        input += usageEvent.InputTokens;
-                        output += usageEvent.OutputTokens;
-                        cached += usageEvent.CachedInputTokens;
+                        if (usageEvent.Kind == UsageEventKind.Cumulative)
+                        {
+                            cumulativeInput = usageEvent.InputTokens;
+                            cumulativeOutput = usageEvent.OutputTokens;
+                            cumulativeCached = usageEvent.CachedInputTokens;
+                            hasCumulativeUsage = true;
+                        }
+                        else
+                        {
+                            input += usageEvent.InputTokens;
+                            output += usageEvent.OutputTokens;
+                            cached += usageEvent.CachedInputTokens;
+                        }
+
                         events++;
                     }
                     catch (JsonException)
                     {
                         continue;
                     }
+                }
+
+                if (hasCumulativeUsage)
+                {
+                    input = cumulativeInput;
+                    output = cumulativeOutput;
+                    cached = cumulativeCached;
                 }
 
                 sessions.Add(new SessionUsageRecord
@@ -126,16 +148,30 @@ public sealed class UsageScanner
     private static UsageEvent? ExtractUsage(JsonElement root, DateTime fallbackUtc)
     {
         var timestamp = FindTimestamp(root) ?? new DateTimeOffset(fallbackUtc, TimeSpan.Zero);
-        var input = FindLong(root, "input_tokens") ?? FindLong(root, "prompt_tokens") ?? 0;
-        var output = FindLong(root, "output_tokens") ?? FindLong(root, "completion_tokens") ?? 0;
-        var cached = FindLong(root, "cached_input_tokens") ?? FindLong(root, "cached_tokens") ?? 0;
-
-        if (input == 0 && output == 0 && cached == 0)
+        if (TryFindProperty(root, "total_token_usage", out var totalTokenUsage) &&
+            TryReadTokenUsage(totalTokenUsage, out var input, out var output, out var cached))
         {
-            return null;
+            return new UsageEvent(timestamp, input, output, cached, UsageEventKind.Cumulative);
         }
 
-        return new UsageEvent(timestamp, input, output, cached);
+        if (TryFindProperty(root, "usage", out var usage) &&
+            TryReadTokenUsage(usage, out input, out output, out cached))
+        {
+            return new UsageEvent(timestamp, input, output, cached, UsageEventKind.Incremental);
+        }
+
+        if (TryFindProperty(root, "last_token_usage", out var lastTokenUsage) &&
+            TryReadTokenUsage(lastTokenUsage, out input, out output, out cached))
+        {
+            return new UsageEvent(timestamp, input, output, cached, UsageEventKind.Incremental);
+        }
+
+        if (TryReadTokenUsage(root, out input, out output, out cached))
+        {
+            return new UsageEvent(timestamp, input, output, cached, UsageEventKind.Incremental);
+        }
+
+        return null;
     }
 
     private static DateTimeOffset? ExtractSessionStart(JsonElement root)
@@ -192,6 +228,14 @@ public sealed class UsageScanner
         }
 
         return null;
+    }
+
+    private static bool TryReadTokenUsage(JsonElement element, out long input, out long output, out long cached)
+    {
+        input = FindLong(element, "input_tokens") ?? FindLong(element, "prompt_tokens") ?? 0;
+        output = FindLong(element, "output_tokens") ?? FindLong(element, "completion_tokens") ?? 0;
+        cached = FindLong(element, "cached_input_tokens") ?? FindLong(element, "cached_tokens") ?? 0;
+        return input != 0 || output != 0 || cached != 0;
     }
 
     private static bool TryFindProperty(JsonElement element, string propertyName, out JsonElement value)
@@ -274,5 +318,11 @@ public sealed class UsageScanner
         };
     }
 
-    private sealed record UsageEvent(DateTimeOffset Timestamp, long InputTokens, long OutputTokens, long CachedInputTokens);
+    private enum UsageEventKind
+    {
+        Incremental,
+        Cumulative
+    }
+
+    private sealed record UsageEvent(DateTimeOffset Timestamp, long InputTokens, long OutputTokens, long CachedInputTokens, UsageEventKind Kind);
 }

@@ -55,6 +55,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("account reorder accepts full payload and preserves all accounts", ApiRegressionTests.ReorderAccountsAcceptsFullPayloadTest),
     ("usage scanner reads shared history without writes", UsageScannerTest),
     ("usage scanner tolerates locked active session files", UsageScannerLockedFileTest),
+    ("usage scanner uses cumulative token snapshots without double counting", UsageScannerUsesCumulativeTokenSnapshotsTest),
     ("usage attribution respects compatible token reset marker", UsageAttributionRespectsCompatibleTokenResetTest),
     ("compatible provider probe suggests missing v1 path", CompatibleProviderProbeSuggestsV1Test),
     ("usage attribution maps sessions by switch intervals", UsageAttributionTest),
@@ -674,6 +675,35 @@ static async Task UsageScannerLockedFileTest()
     AssertEqual(3L, summary.OutputTokens);
     AssertEqual(1L, summary.CachedInputTokens);
     AssertEqual(1, summary.EventsScanned);
+}
+
+static async Task UsageScannerUsesCumulativeTokenSnapshotsTest()
+{
+    using var temp = TempDir.Create();
+    var codexHome = Path.Combine(temp.Path, ".codex");
+    var sessions = Path.Combine(codexHome, "sessions");
+    Directory.CreateDirectory(sessions);
+
+    var sessionPath = Path.Combine(sessions, "new-format.jsonl");
+    await File.WriteAllTextAsync(sessionPath, string.Join('\n',
+    [
+        "{\"type\":\"session_meta\",\"timestamp\":\"2026-04-15T00:00:00Z\",\"payload\":{\"id\":\"session-1\",\"timestamp\":\"2026-04-15T00:00:00Z\"}}",
+        "{\"type\":\"event_msg\",\"timestamp\":\"2026-04-15T00:01:00Z\",\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":100000,\"output_tokens\":50000,\"cached_input_tokens\":10000},\"last_token_usage\":{\"input_tokens\":1,\"output_tokens\":2,\"cached_input_tokens\":3}}}}",
+        "{\"type\":\"event_msg\",\"timestamp\":\"2026-04-15T00:02:00Z\",\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":220000,\"output_tokens\":110000,\"cached_input_tokens\":20000},\"last_token_usage\":{\"input_tokens\":4,\"output_tokens\":5,\"cached_input_tokens\":6}}}}",
+        "{\"type\":\"event_msg\",\"timestamp\":\"2026-04-15T00:03:00Z\",\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":340000,\"output_tokens\":170000,\"cached_input_tokens\":30000},\"last_token_usage\":{\"input_tokens\":7,\"output_tokens\":8,\"cached_input_tokens\":9}}}}"
+    ]) + "\n");
+
+    var home = new CodexHomeLocator().Resolve(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CODEX_HOME"] = codexHome,
+        ["USERPROFILE"] = temp.Path
+    });
+
+    var summary = await new UsageScanner().ScanAsync(home, DateTimeOffset.Parse("2026-04-01T00:00:00Z"), DateTimeOffset.Parse("2026-04-30T00:00:00Z"));
+    AssertEqual(340000L, summary.InputTokens);
+    AssertEqual(170000L, summary.OutputTokens);
+    AssertEqual(30000L, summary.CachedInputTokens);
+    AssertEqual(3, summary.EventsScanned);
 }
 
 static async Task CompatibleProviderProbeSuggestsV1Test()
