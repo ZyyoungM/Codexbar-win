@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using CodexBar.Auth;
+using CodexBar.Application;
 using CodexBar.CodexCompat;
 using CodexBar.Core;
 using CodexBar.Runtime;
@@ -250,22 +251,9 @@ public partial class SettingsWindow : Window
             return false;
         }
 
-        var decision = await new OpenAiAggregateGatewayService(_appPaths, _secretStore)
-            .ResolveSelectionAsync(_config, _config.ActiveSelection);
-        var service = new CodexActivationService(
-            new CodexHomeLocator(),
-            new CodexConfigStore(),
-            new CodexAuthStore(),
-            new CodexStateTransaction(_appPaths),
-            new CodexIntegrityChecker(),
-            _secretStore,
-            _secretStore);
-        var result = await service.ActivateAsync(_config, decision.ResolvedSelection);
-        var journalMessage = decision.WasRerouted
-            ? $"{decision.Message} {result.Message}"
-            : result.Message;
-        await new SwitchJournalStore(_appPaths.SwitchJournalPath)
-            .AppendAsync(result.Selection, result.ValidationPassed ? "ok" : "failed", journalMessage);
+        var activation = await new AccountActivationWorkflow(_appPaths, _configStore, _secretStore, _secretStore)
+            .ActivateAsync(_config, _config.ActiveSelection);
+        var result = activation.SwitchResult;
 
         if (!result.ValidationPassed)
         {
@@ -273,17 +261,7 @@ public partial class SettingsWindow : Window
             return false;
         }
 
-        var activatedSelection = result.Selection;
-        _config = _config with
-        {
-            ActiveSelection = activatedSelection,
-            Accounts = _config.Accounts
-                .Select(account => account.ProviderId == activatedSelection.ProviderId && account.AccountId == activatedSelection.AccountId
-                    ? account with { LastUsedAt = DateTimeOffset.UtcNow }
-                    : account)
-                .ToList()
-        };
-        await _configStore.SaveAsync(_config);
+        _config = activation.UpdatedConfig;
         return true;
     }
 

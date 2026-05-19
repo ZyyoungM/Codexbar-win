@@ -4,6 +4,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\CodexBar.Application\CodexBar.Application.csproj" />
     <ProjectReference Include="..\CodexBar.Core\CodexBar.Core.csproj" />
     <ProjectReference Include="..\CodexBar.CodexCompat\CodexBar.CodexCompat.csproj" />
     <ProjectReference Include="..\CodexBar.Auth\CodexBar.Auth.csproj" />

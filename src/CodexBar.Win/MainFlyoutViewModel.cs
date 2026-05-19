@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using CodexBar.Auth;
+using CodexBar.Application;
 using CodexBar.CodexCompat;
 using CodexBar.Core;
 using CodexBar.Runtime;
@@ -154,9 +155,9 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
 
     public bool IsCompactCardDensity => _config.Settings.AccountCardDensity == AccountCardDensity.Compact;
 
-    public string RoutingModeBadgeText => BuildRoutingModeBadgeText(_config.Settings.OpenAiAccountMode);
+    public string RoutingModeBadgeText => AccountDashboardProjectionService.BuildRoutingModeBadgeText(_config.Settings.OpenAiAccountMode);
 
-    public string RoutingDescriptionText => BuildRoutingDescriptionText(_config.Settings.OpenAiAccountMode);
+    public string RoutingDescriptionText => AccountDashboardProjectionService.BuildRoutingDescriptionText(_config.Settings.OpenAiAccountMode);
 
     public async Task LoadInitialAsync()
     {
@@ -199,18 +200,15 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         try
         {
             ActivityText = "\u6B63\u5728\u540C\u6B65\u5B98\u65B9\u989D\u5EA6...";
-            var officialUsageRefresh = await new OpenAiOfficialUsageService(_secretStore)
-                .RefreshAsync(_config, TimeSpan.FromMinutes(1));
-            if (officialUsageRefresh.Changed)
+            var refreshedConfig = await LoadHydratedConfigAsync(TimeSpan.FromMinutes(1), refreshOfficialUsage: true);
+            if (refreshedConfig != _config)
             {
-                _config = await MergeOfficialUsageAccountsAsync(officialUsageRefresh.Config.Accounts);
+                _config = refreshedConfig;
                 ApplyViewState(_homeLocator.Resolve(), _lastUsageDashboard);
                 RefreshLastRefreshText(DateTimeOffset.Now);
             }
 
-            ActivityText = officialUsageRefresh.AccountsRefreshed > 0
-                ? "\u5B98\u65B9\u989D\u5EA6\u5DF2\u540C\u6B65\u3002"
-                : "";
+            ActivityText = "\u5B98\u65B9\u989D\u5EA6\u5DF2\u540C\u6B65\u3002";
         }
         catch (Exception ex)
         {
@@ -261,13 +259,13 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         => await SwitchOnlyAsync(item);
 
     public async Task SwitchOnlyAsync(AccountListItem item)
-        => await ActivateSelectionAsync(item, SwitchLaunchAction.SwitchOnly);
+        => await ActivateSelectionAsync(ToSelection(item), SwitchLaunchAction.SwitchOnly);
 
     public async Task SwitchAndLaunchCodexAsync(AccountListItem item)
-        => await ActivateSelectionAsync(item, SwitchLaunchAction.LaunchCodex);
+        => await ActivateSelectionAsync(ToSelection(item), SwitchLaunchAction.LaunchCodex);
 
     public async Task SwitchAndRestartCodexDesktopAsync(AccountListItem item)
-        => await ActivateSelectionAsync(item, SwitchLaunchAction.RestartCodexDesktop);
+        => await ActivateSelectionAsync(ToSelection(item), SwitchLaunchAction.RestartCodexDesktop);
 
     public async Task<CodexDesktopProcessStatus> GetCodexDesktopStatusAsync()
     {
@@ -308,48 +306,21 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 return;
             }
 
-            if (_config.ActiveSelection is null)
+            var activeSelection = ActiveSelectionResolver.Resolve(_config);
+            if (activeSelection.Status == ActiveSelectionResolutionStatus.MissingSelection)
             {
                 ErrorText = "\u8BF7\u5148\u9009\u62E9\u4E00\u4E2A\u8D26\u53F7\uFF0C\u6216\u5148\u70B9\u51FB\u201C\u5207\u6362\u201D\u6FC0\u6D3B\u8D26\u53F7\u540E\u518D\u542F\u52A8 Codex\u3002";
                 return;
             }
 
-            var activeAccount = _config.Accounts.FirstOrDefault(account =>
-                string.Equals(account.ProviderId, _config.ActiveSelection.ProviderId, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(account.AccountId, _config.ActiveSelection.AccountId, StringComparison.OrdinalIgnoreCase));
-            if (activeAccount is null)
+            if (activeSelection.Status == ActiveSelectionResolutionStatus.MissingAccount ||
+                activeSelection.Selection is null)
             {
                 ErrorText = "\u5F53\u524D\u6FC0\u6D3B\u8D26\u53F7\u5DF2\u4E0D\u5B58\u5728\uFF0C\u8BF7\u5148\u91CD\u65B0\u9009\u62E9\u4E00\u4E2A\u8D26\u53F7\u3002";
                 return;
             }
 
-            await ActivateSelectionAsync(new AccountListItem
-            {
-                ProviderId = activeAccount.ProviderId,
-                AccountId = activeAccount.AccountId,
-                Name = activeAccount.Label,
-                ProviderBadge = "",
-                TierBadgeText = BuildAccountTierBadgeText(activeAccount),
-                Subtitle = "",
-                IsActive = true,
-                IsOpenAi = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(activeAccount),
-                NeedsReauthorization = OpenAiQuotaPolicy.NeedsReauth(activeAccount),
-                CanProbe = false,
-                CanRefreshOfficialQuota = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(activeAccount),
-                StatusText = "",
-                StatusBrush = "#107C10",
-                DailyTokens = "0",
-                WeeklyTokens = "0",
-                MonthlyTokens = "0",
-                FiveHourUsedPercent = 0,
-                WeeklyUsedPercent = 0,
-                FiveHourQuotaLabel = "5h 额度",
-                WeeklyQuotaLabel = "周额度",
-                FiveHourAvailableText = "",
-                WeeklyAvailableText = "",
-                FiveHourProgressBrush = "#107C10",
-                WeeklyProgressBrush = "#107C10"
-            }, SwitchLaunchAction.LaunchCodex);
+            await ActivateSelectionAsync(activeSelection.Selection, SwitchLaunchAction.LaunchCodex);
         }
         catch (Exception ex)
         {
@@ -367,48 +338,21 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
             ErrorText = "";
             ActivityText = "\u6B63\u5728\u51C6\u5907\u91CD\u542F Codex Desktop...";
             _config = await LoadHydratedConfigAsync(TimeSpan.FromMinutes(1), refreshOfficialUsage: false);
-            if (_config.ActiveSelection is null)
+            var activeSelection = ActiveSelectionResolver.Resolve(_config);
+            if (activeSelection.Status == ActiveSelectionResolutionStatus.MissingSelection)
             {
                 ErrorText = "\u8BF7\u5148\u9009\u62E9\u4E00\u4E2A\u8D26\u53F7\uFF0C\u6216\u5148\u70B9\u51FB\u201C\u5207\u6362\u201D\u6FC0\u6D3B\u8D26\u53F7\u540E\u518D\u91CD\u542F Codex\u3002";
                 return;
             }
 
-            var activeAccount = _config.Accounts.FirstOrDefault(account =>
-                string.Equals(account.ProviderId, _config.ActiveSelection.ProviderId, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(account.AccountId, _config.ActiveSelection.AccountId, StringComparison.OrdinalIgnoreCase));
-            if (activeAccount is null)
+            if (activeSelection.Status == ActiveSelectionResolutionStatus.MissingAccount ||
+                activeSelection.Selection is null)
             {
                 ErrorText = "\u5F53\u524D\u6FC0\u6D3B\u8D26\u53F7\u5DF2\u4E0D\u5B58\u5728\uFF0C\u8BF7\u5148\u91CD\u65B0\u9009\u62E9\u4E00\u4E2A\u8D26\u53F7\u3002";
                 return;
             }
 
-            await ActivateSelectionAsync(new AccountListItem
-            {
-                ProviderId = activeAccount.ProviderId,
-                AccountId = activeAccount.AccountId,
-                Name = activeAccount.Label,
-                ProviderBadge = "",
-                TierBadgeText = BuildAccountTierBadgeText(activeAccount),
-                Subtitle = "",
-                IsActive = true,
-                IsOpenAi = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(activeAccount),
-                NeedsReauthorization = OpenAiQuotaPolicy.NeedsReauth(activeAccount),
-                CanProbe = false,
-                CanRefreshOfficialQuota = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(activeAccount),
-                StatusText = "",
-                StatusBrush = "#107C10",
-                DailyTokens = "0",
-                WeeklyTokens = "0",
-                MonthlyTokens = "0",
-                FiveHourUsedPercent = 0,
-                WeeklyUsedPercent = 0,
-                FiveHourQuotaLabel = "5h 额度",
-                WeeklyQuotaLabel = "周额度",
-                FiveHourAvailableText = "",
-                WeeklyAvailableText = "",
-                FiveHourProgressBrush = "#107C10",
-                WeeklyProgressBrush = "#107C10"
-            }, SwitchLaunchAction.RestartCodexDesktop);
+            await ActivateSelectionAsync(activeSelection.Selection, SwitchLaunchAction.RestartCodexDesktop);
         }
         catch (Exception ex)
         {
@@ -425,37 +369,18 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         {
             ErrorText = "";
             ActivityText = "\u6B63\u5728\u63A2\u6D4B API \u8FDE\u901A\u60C5\u51B5...";
-            _config = await _appConfigStore.LoadAsync();
-
-            var compatibleProviderIds = _config.Providers
-                .Where(provider => provider.Kind == ProviderKind.OpenAiCompatible)
-                .Select(provider => provider.ProviderId)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var accounts = _config.Accounts
-                .Where(account => compatibleProviderIds.Contains(account.ProviderId))
-                .ToList();
-
-            if (item is not null && compatibleProviderIds.Contains(item.ProviderId))
-            {
-                accounts = accounts
-                    .Where(account => account.ProviderId == item.ProviderId && account.AccountId == item.AccountId)
-                    .ToList();
-            }
-
-            if (accounts.Count == 0)
+            var probe = await NewHealthRefreshWorkflow().ProbeCompatibleApisAsync(item is null ? null : ToSelection(item));
+            if (probe.CompatibleProbeCount == 0)
             {
                 ErrorText = "\u6CA1\u6709\u53EF\u63A2\u6D4B\u7684\u517C\u5BB9 Provider \u8D26\u53F7\u3002";
                 ActivityText = "\u63A2\u6D4B\u672A\u6267\u884C";
                 return;
             }
 
-            var results = await new CompatibleProviderProbeService(_secretStore)
-                .ProbeAsync(_config, accounts);
-            var successCount = results.Count(result => result.Success);
-            _config = await ApplyCompatibleProbeResultsAsync(_config, results);
+            _config = probe.UpdatedConfig;
             ApplyViewState(_homeLocator.Resolve(), _lastUsageDashboard);
             RefreshLastRefreshText(DateTimeOffset.Now);
-            ActivityText = $"\u63A2\u6D4B\u5B8C\u6210\uFF1A{successCount}/{results.Count} \u53EF\u7528";
+            ActivityText = $"\u63A2\u6D4B\u5B8C\u6210\uFF1A{probe.CompatibleProbeSuccessCount}/{probe.CompatibleProbeCount} \u53EF\u7528";
         }
         catch (Exception ex)
         {
@@ -472,51 +397,22 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         {
             ErrorText = "";
             ActivityText = "\u6B63\u5728\u5237\u65B0\u989D\u5EA6/API...";
-            _config = await _appConfigStore.LoadAsync();
-
-            var officialAccounts = _config.Accounts
-                .Where(OpenAiQuotaPolicy.IsOpenAiOAuthAccount)
-                .ToList();
-            var refreshedAccounts = new List<AccountRecord>(officialAccounts.Count);
-            if (officialAccounts.Count > 0)
-            {
-                var officialUsageService = new OpenAiOfficialUsageService(_secretStore);
-                foreach (var account in officialAccounts)
-                {
-                    refreshedAccounts.Add(await officialUsageService.RefreshAccountAsync(account));
-                }
-
-                _config = await MergeOfficialUsageAccountsAsync(refreshedAccounts);
-            }
-
-            var compatibleProviderIds = _config.Providers
-                .Where(provider => provider.Kind == ProviderKind.OpenAiCompatible)
-                .Select(provider => provider.ProviderId)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var compatibleAccounts = _config.Accounts
-                .Where(account => compatibleProviderIds.Contains(account.ProviderId))
-                .ToList();
-
-            var probeResults = compatibleAccounts.Count == 0
-                ? []
-                : await new CompatibleProviderProbeService(_secretStore).ProbeAsync(_config, compatibleAccounts);
-            _config = await ApplyCompatibleProbeResultsAsync(_config, probeResults);
+            var refresh = await NewHealthRefreshWorkflow().RefreshQuotaAndApisAsync();
+            _config = refresh.UpdatedConfig;
             ApplyViewState(_homeLocator.Resolve(), _lastUsageDashboard);
             RefreshLastRefreshText(DateTimeOffset.Now);
 
             var summaryParts = new List<string>();
-            if (officialAccounts.Count > 0)
+            if (refresh.OfficialAccountCount > 0)
             {
-                var officialFailedCount = refreshedAccounts.Count(account => !string.IsNullOrWhiteSpace(account.OfficialUsageError));
-                summaryParts.Add(officialFailedCount == 0
-                    ? $"\u5B98\u65B9\u989D\u5EA6 {refreshedAccounts.Count}/{refreshedAccounts.Count} \u5DF2\u5237\u65B0"
-                    : $"\u5B98\u65B9\u989D\u5EA6 {refreshedAccounts.Count - officialFailedCount}/{refreshedAccounts.Count} \u6210\u529F");
+                summaryParts.Add(refresh.OfficialFailedCount == 0
+                    ? $"\u5B98\u65B9\u989D\u5EA6 {refresh.OfficialAccountCount}/{refresh.OfficialAccountCount} \u5DF2\u5237\u65B0"
+                    : $"\u5B98\u65B9\u989D\u5EA6 {refresh.OfficialAccountCount - refresh.OfficialFailedCount}/{refresh.OfficialAccountCount} \u6210\u529F");
             }
 
-            if (probeResults.Count > 0)
+            if (refresh.CompatibleProbeCount > 0)
             {
-                var probeSuccessCount = probeResults.Count(result => result.Success);
-                summaryParts.Add($"API {probeSuccessCount}/{probeResults.Count} \u53EF\u7528");
+                summaryParts.Add($"API {refresh.CompatibleProbeSuccessCount}/{refresh.CompatibleProbeCount} \u53EF\u7528");
             }
 
             if (summaryParts.Count == 0)
@@ -545,37 +441,21 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         {
             ErrorText = "";
             ActivityText = "\u6B63\u5728\u5237\u65B0\u5B98\u65B9\u989D\u5EA6...";
-            _config = await _appConfigStore.LoadAsync();
-
-            var targetAccounts = _config.Accounts
-                .Where(OpenAiQuotaPolicy.IsOpenAiOAuthAccount)
-                .Where(account => item is null ||
-                    (string.Equals(account.ProviderId, item.ProviderId, StringComparison.OrdinalIgnoreCase) &&
-                     string.Equals(account.AccountId, item.AccountId, StringComparison.OrdinalIgnoreCase)))
-                .ToList();
-
-            if (targetAccounts.Count == 0)
+            var refresh = await NewHealthRefreshWorkflow().RefreshOfficialQuotaAsync(item is null ? null : ToSelection(item));
+            if (refresh.OfficialAccountCount == 0)
             {
                 ErrorText = "\u6CA1\u6709\u53EF\u5237\u65B0\u7684 OpenAI \u5B98\u65B9\u8D26\u53F7\u3002";
                 ActivityText = "\u5237\u65B0\u672A\u6267\u884C";
                 return;
             }
 
-            var service = new OpenAiOfficialUsageService(_secretStore);
-            var refreshedAccounts = new List<AccountRecord>(targetAccounts.Count);
-            foreach (var account in targetAccounts)
-            {
-                refreshedAccounts.Add(await service.RefreshAccountAsync(account));
-            }
-
-            _config = await MergeOfficialUsageAccountsAsync(refreshedAccounts);
+            _config = refresh.UpdatedConfig;
             ApplyViewState(_homeLocator.Resolve(), _lastUsageDashboard);
             RefreshLastRefreshText(DateTimeOffset.Now);
 
-            var failedCount = refreshedAccounts.Count(account => !string.IsNullOrWhiteSpace(account.OfficialUsageError));
-            ActivityText = failedCount == 0
-                ? (refreshedAccounts.Count == 1 ? "\u5B98\u65B9\u989D\u5EA6\u5DF2\u5237\u65B0\u3002" : "\u5B98\u65B9\u989D\u5EA6\u5DF2\u6279\u91CF\u5237\u65B0\u3002")
-                : $"\u5B98\u65B9\u989D\u5EA6\u5237\u65B0\u5B8C\u6210\uFF0C{failedCount}/{refreshedAccounts.Count} \u5931\u8D25";
+            ActivityText = refresh.OfficialFailedCount == 0
+                ? (refresh.OfficialAccountCount == 1 ? "\u5B98\u65B9\u989D\u5EA6\u5DF2\u5237\u65B0\u3002" : "\u5B98\u65B9\u989D\u5EA6\u5DF2\u6279\u91CF\u5237\u65B0\u3002")
+                : $"\u5B98\u65B9\u989D\u5EA6\u5237\u65B0\u5B8C\u6210\uFF0C{refresh.OfficialFailedCount}/{refresh.OfficialAccountCount} \u5931\u8D25";
             ErrorText = "";
         }
         catch (Exception ex)
@@ -595,7 +475,7 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
             _config = await _appConfigStore.LoadAsync();
             if (_config.Settings.OpenAiAccountMode == mode)
             {
-                RoutingModeText = BuildRoutingModeText(mode);
+                RoutingModeText = AccountDashboardProjectionService.BuildRoutingModeText(mode);
                 RaiseRoutingModePropertiesChanged();
                 ActivityText = mode == OpenAiAccountMode.AggregateGateway
                     ? "\u5DF2\u4FDD\u6301\u81EA\u52A8\u5207\u6362\u3002"
@@ -614,7 +494,7 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 }
             };
             await _appConfigStore.SaveAsync(_config);
-            RoutingModeText = BuildRoutingModeText(mode);
+            RoutingModeText = AccountDashboardProjectionService.BuildRoutingModeText(mode);
             RaiseRoutingModePropertiesChanged();
             ActivityText = mode == OpenAiAccountMode.AggregateGateway
                 ? "\u5DF2\u5207\u6362\u5230\u81EA\u52A8\u5207\u6362\u3002"
@@ -990,201 +870,22 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
     }
 
     private async Task<AppConfig> BackfillOAuthIdentitiesAsync(AppConfig config)
-    {
-        var changed = false;
-        var accounts = new List<AccountRecord>(config.Accounts.Count);
-        foreach (var account in config.Accounts)
-        {
-            if (account.ProviderId != "openai" || !account.CredentialRef.StartsWith("oauth:", StringComparison.OrdinalIgnoreCase))
-            {
-                accounts.Add(account);
-                continue;
-            }
-
-            var tokens = await _secretStore.ReadTokensAsync(account.CredentialRef);
-            if (tokens is null)
-            {
-                accounts.Add(account);
-                continue;
-            }
-
-            var identity = OAuthIdentityExtractor.Extract(tokens);
-            var workspace = OpenAiWorkspaceDiscovery.CurrentOrFallback(tokens, identity);
-            var label = account.Label;
-            if (string.IsNullOrWhiteSpace(label) || string.Equals(label, "OpenAI", StringComparison.OrdinalIgnoreCase))
-            {
-                label = OpenAiWorkspaceLabelFormatter.Build(identity, workspace, account.Label);
-            }
-
-            var updated = account with
-            {
-                Label = label,
-                Email = account.Email ?? identity.Email,
-                SubjectId = account.SubjectId ?? identity.SubjectId,
-                OpenAiAccountId = account.OpenAiAccountId ?? OpenAiOAuthAccountKey.NormalizeOpenAiAccountId(tokens),
-                WorkspaceId = account.WorkspaceId ?? workspace.WorkspaceId,
-                WorkspaceName = account.WorkspaceName ?? workspace.WorkspaceName,
-                WorkspaceType = account.WorkspaceType ?? workspace.WorkspaceType,
-                SeatType = account.SeatType ?? workspace.SeatType,
-                QuotaScopeKey = account.QuotaScopeKey ?? workspace.QuotaScopeKey
-            };
-            changed |= updated != account;
-            accounts.Add(updated);
-        }
-
-        if (!changed)
-        {
-            return config;
-        }
-
-        var updatedConfig = config with { Accounts = accounts };
-        await _appConfigStore.SaveAsync(updatedConfig);
-        return updatedConfig;
-    }
+        => await NewHydrationService().BackfillOAuthIdentitiesAsync(config);
 
     private async Task<AppConfig> NormalizeManualOrderAsync(AppConfig config)
-    {
-        var changed = false;
-        var next = 1;
-        var used = new HashSet<int>();
-        var accounts = new List<AccountRecord>(config.Accounts.Count);
-
-        foreach (var account in config.Accounts)
-        {
-            var order = account.ManualOrder;
-            if (order <= 0 || used.Contains(order))
-            {
-                while (used.Contains(next))
-                {
-                    next++;
-                }
-
-                order = next;
-                changed = true;
-            }
-
-            used.Add(order);
-            next = Math.Max(next, order + 1);
-            accounts.Add(order == account.ManualOrder ? account : account with { ManualOrder = order });
-        }
-
-        if (!changed)
-        {
-            return config;
-        }
-
-        var updated = config with { Accounts = accounts };
-        await _appConfigStore.SaveAsync(updated);
-        return updated;
-    }
+        => await NewHydrationService().NormalizeManualOrderAsync(config);
 
     private async Task<AppConfig> LoadHydratedConfigAsync(TimeSpan officialUsageMinRefreshInterval, bool refreshOfficialUsage)
-    {
-        var config = await _appConfigStore.LoadAsync();
-        config = await BackfillOAuthIdentitiesAsync(config);
-        config = await NormalizeManualOrderAsync(config);
+        => await NewHydrationService().HydrateAsync(officialUsageMinRefreshInterval, refreshOfficialUsage);
 
-        if (!refreshOfficialUsage)
-        {
-            return config;
-        }
+    private AppConfigHydrationService NewHydrationService()
+        => new(_appConfigStore, _secretStore);
 
-        var officialUsageRefresh = await new OpenAiOfficialUsageService(_secretStore)
-            .RefreshAsync(config, officialUsageMinRefreshInterval);
-        if (officialUsageRefresh.Changed)
-        {
-            return await MergeOfficialUsageAccountsAsync(officialUsageRefresh.Config.Accounts);
-        }
+    private AccountActivationWorkflow NewActivationWorkflow()
+        => new(_appPaths, _appConfigStore, _secretStore, _secretStore, _homeLocator);
 
-        return await _appConfigStore.LoadAsync();
-    }
-
-    private async Task<AppConfig> MergeOfficialUsageAccountsAsync(IEnumerable<AccountRecord> refreshedAccounts)
-    {
-        var refreshedMap = refreshedAccounts.ToDictionary(
-            account => (account.ProviderId, account.AccountId),
-            account => account,
-            EqualityComparer<(string ProviderId, string AccountId)>.Default);
-
-        var latest = await _appConfigStore.LoadAsync();
-        if (refreshedMap.Count == 0)
-        {
-            return latest;
-        }
-
-        var merged = latest with
-        {
-            Accounts = latest.Accounts
-                .Select(account =>
-                {
-                    var key = (account.ProviderId, account.AccountId);
-                    return refreshedMap.TryGetValue(key, out var refreshed)
-                        ? MergeOfficialUsageFields(account, refreshed)
-                        : account;
-                })
-                .ToList()
-        };
-
-        if (merged != latest)
-        {
-            await _appConfigStore.SaveAsync(merged);
-        }
-
-        return merged;
-    }
-
-    private async Task<AppConfig> ApplyCompatibleProbeResultsAsync(
-        AppConfig config,
-        IReadOnlyList<CompatibleProviderProbeResult> results)
-    {
-        if (results.Count == 0)
-        {
-            return config;
-        }
-
-        var resultMap = results.ToDictionary(
-            result => (result.ProviderId, result.AccountId),
-            result => result,
-            EqualityComparer<(string ProviderId, string AccountId)>.Default);
-
-        var updated = config with
-        {
-            Accounts = config.Accounts
-                .Select(account =>
-                {
-                    var key = (account.ProviderId, account.AccountId);
-                    if (!resultMap.TryGetValue(key, out var result))
-                    {
-                        return account;
-                    }
-
-                    return account with
-                    {
-                        Status = result.Success ? AccountStatus.Active : AccountStatus.NeedsReauth
-                    };
-                })
-                .ToList()
-        };
-
-        if (updated != config)
-        {
-            await _appConfigStore.SaveAsync(updated);
-        }
-
-        return updated;
-    }
-
-    private static AccountRecord MergeOfficialUsageFields(AccountRecord current, AccountRecord refreshed)
-        => current with
-        {
-            Tier = refreshed.Tier,
-            OfficialPlanTypeRaw = refreshed.OfficialPlanTypeRaw,
-            FiveHourQuota = refreshed.FiveHourQuota,
-            WeeklyQuota = refreshed.WeeklyQuota,
-            OfficialUsageFetchedAt = refreshed.OfficialUsageFetchedAt,
-            OfficialUsageError = refreshed.OfficialUsageError,
-            Status = refreshed.Status
-        };
+    private AccountHealthRefreshWorkflow NewHealthRefreshWorkflow()
+        => new(_appConfigStore, _secretStore, _secretStore);
 
     private void RefreshLastRefreshText(DateTimeOffset now)
     {
@@ -1220,8 +921,14 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
             .Any(account => !account.OfficialUsageFetchedAt.HasValue || now - account.OfficialUsageFetchedAt.Value >= minRefreshInterval);
     }
 
+    private static CodexSelection ToSelection(AccountListItem item)
+        => new() { ProviderId = item.ProviderId, AccountId = item.AccountId };
+
+    private static CodexSelection RefreshSelectionTimestamp(CodexSelection selection)
+        => new() { ProviderId = selection.ProviderId, AccountId = selection.AccountId };
+
     private async Task ActivateSelectionAsync(
-        AccountListItem item,
+        CodexSelection selection,
         SwitchLaunchAction action)
     {
         using var _ = EnterBusy();
@@ -1235,25 +942,9 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 _ => "\u6B63\u5728\u5207\u6362\u8D26\u53F7..."
             };
             _config = await LoadHydratedConfigAsync(TimeSpan.FromMinutes(1), refreshOfficialUsage: false);
-            var requestedSelection = new CodexSelection { ProviderId = item.ProviderId, AccountId = item.AccountId };
-            var aggregateDecision = await new OpenAiAggregateGatewayService(_appPaths, _secretStore)
-                .ResolveSelectionAsync(_config, requestedSelection);
-            var selection = aggregateDecision.ResolvedSelection;
-            var service = new CodexActivationService(
-                _homeLocator,
-                new CodexConfigStore(),
-                new CodexAuthStore(),
-                new CodexStateTransaction(_appPaths),
-                new CodexIntegrityChecker(),
-                _secretStore,
-                _secretStore);
-
-            var result = await service.ActivateAsync(_config, selection);
-            var journalMessage = aggregateDecision.WasRerouted
-                ? $"{aggregateDecision.Message} {result.Message}"
-                : result.Message;
-            await new SwitchJournalStore(_appPaths.SwitchJournalPath)
-                .AppendAsync(result.Selection, result.ValidationPassed ? "ok" : "failed", journalMessage);
+            var requestedSelection = RefreshSelectionTimestamp(selection);
+            var activation = await NewActivationWorkflow().ActivateAsync(_config, requestedSelection);
+            var result = activation.SwitchResult;
 
             if (!result.ValidationPassed)
             {
@@ -1261,17 +952,7 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                 return;
             }
 
-            var activatedSelection = result.Selection;
-            _config = _config with
-            {
-                ActiveSelection = activatedSelection,
-                Accounts = _config.Accounts
-                    .Select(account => account.ProviderId == activatedSelection.ProviderId && account.AccountId == activatedSelection.AccountId
-                        ? account with { LastUsedAt = DateTimeOffset.UtcNow }
-                        : account)
-                    .ToList()
-            };
-            await _appConfigStore.SaveAsync(_config);
+            _config = activation.UpdatedConfig;
             await RefreshAsync("\u6B63\u5728\u5237\u65B0\u9762\u677F...", "\u8D26\u53F7\u5DF2\u5207\u6362\u3002");
 
             switch (action)
@@ -1288,9 +969,9 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
                     break;
             }
 
-            if (aggregateDecision.WasRerouted)
+            if (activation.GatewayDecision.WasRerouted)
             {
-                StatusText = $"{StatusText}\n{aggregateDecision.Message}";
+                StatusText = $"{StatusText}\n{activation.GatewayDecision.Message}";
             }
         }
         catch (Exception ex)
@@ -1476,72 +1157,86 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
     private void ApplyViewState(CodexHomeState home, UsageDashboard usageDashboard)
     {
         _lastUsageDashboard = usageDashboard;
-        var active = _config.ActiveSelection is null
-            ? "\u5F53\u524D\u672A\u6FC0\u6D3B\u8D26\u53F7"
-            : $"\u5F53\u524D\u6FC0\u6D3B\uFF1A{_config.ActiveSelection.ProviderId}/{_config.ActiveSelection.AccountId}";
-        StatusText = $"{active}\n{home.RootPath}";
-        QuotaStatusText = BuildQuotaStatusText(_config);
-        RoutingModeText = BuildRoutingModeText(_config.Settings.OpenAiAccountMode);
-        FootnoteText = "\u5207\u6362\u4EC5\u5F71\u54CD\u65B0\u4F1A\u8BDD\u00B7\u73B0\u6709\u4F1A\u8BDD\u4FDD\u6301\u4E0D\u53D8";
+        var projection = new AccountDashboardProjectionService().Build(_config, home, usageDashboard);
+        StatusText = projection.StatusText;
+        QuotaStatusText = projection.QuotaStatusText;
+        RoutingModeText = projection.RoutingModeText;
+        FootnoteText = projection.FootnoteText;
         RaiseRoutingModePropertiesChanged();
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsCompactCardDensity)));
 
         Accounts.Clear();
-        foreach (var account in OrderedAccounts(_config, usageDashboard))
+        foreach (var account in projection.Accounts)
         {
-            var provider = _config.Providers.FirstOrDefault(p => p.ProviderId == account.ProviderId);
-            var usage = usageDashboard.Accounts.FirstOrDefault(summary => summary.ProviderId == account.ProviderId && summary.AccountId == account.AccountId);
-            var isActive =
-                _config.ActiveSelection?.ProviderId == account.ProviderId &&
-                _config.ActiveSelection?.AccountId == account.AccountId;
-            var useCompactTokenUnit = provider?.Kind == ProviderKind.OpenAiCompatible;
-            var fiveHourUsedPercent = ClampUsagePercent(account.FiveHourQuota);
-            var weeklyUsedPercent = ClampUsagePercent(account.WeeklyQuota);
-            var needsReauthorization = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account) && OpenAiQuotaPolicy.NeedsReauth(account);
-            Accounts.Add(new AccountListItem
-            {
-                ProviderId = account.ProviderId,
-                AccountId = account.AccountId,
-                Name = BuildAccountTitle(account),
-                ProviderBadge = BuildAccountProviderBadge(provider, account),
-                TierBadgeText = BuildAccountTierBadgeText(account),
-                CompactMetaText = BuildCompactAccountMetaText(provider, account),
-                Subtitle = BuildAccountSubtitle(provider, account, _config.Accounts),
-                IsActive = isActive,
-                IsOpenAi = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account),
-                NeedsReauthorization = needsReauthorization,
-                CanProbe = provider?.Kind == ProviderKind.OpenAiCompatible,
-                CanRefreshOfficialQuota = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account),
-                StatusText = BuildAccountStatusText(provider, account),
-                StatusBrush = BuildAccountStatusBrush(provider, account),
-                DailyTokens = FormatTokenCount(usage?.Today.TotalTokens ?? 0, useCompactTokenUnit),
-                WeeklyTokens = FormatTokenCount(usage?.Last7Days.TotalTokens ?? 0, useCompactTokenUnit),
-                MonthlyTokens = FormatTokenCount(usage?.Last30Days.TotalTokens ?? 0, useCompactTokenUnit),
-                FiveHourUsedPercent = fiveHourUsedPercent,
-                WeeklyUsedPercent = weeklyUsedPercent,
-                FiveHourQuotaLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.FiveHourQuota, "5h 额度"),
-                WeeklyQuotaLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.WeeklyQuota, "周额度"),
-                FiveHourQuotaInlineLabel = OpenAiQuotaDisplayFormatter.FormatInlineQuotaLabel(account.FiveHourQuota, "5h"),
-                WeeklyQuotaInlineLabel = OpenAiQuotaDisplayFormatter.FormatInlineQuotaLabel(account.WeeklyQuota, "week"),
-                FiveHourAvailableText = BuildAvailableQuotaText(account.FiveHourQuota),
-                WeeklyAvailableText = BuildAvailableQuotaText(account.WeeklyQuota),
-                FiveHourProgressBrush = BuildUsageBrush(fiveHourUsedPercent),
-                WeeklyProgressBrush = BuildUsageBrush(weeklyUsedPercent)
-            });
+            Accounts.Add(ToAccountListItem(account));
         }
 
-        UsageText =
-            $"\u4ECA\u65E5\uFF1A{usageDashboard.Today.TotalTokens:n0} tokens\n" +
-            $"\u8FD1 7 \u5929\uFF1A{usageDashboard.Last7Days.TotalTokens:n0} tokens\n" +
-            $"\u8FD1 30 \u5929\uFF1A{usageDashboard.Last30Days.TotalTokens:n0} tokens\n" +
-            $"\u7D2F\u8BA1\uFF1A{usageDashboard.Lifetime.TotalTokens:n0} tokens";
-        if (usageDashboard.UnattributedSessions > 0)
-        {
-            UsageText += $"\n\u672A\u5F52\u56E0\u4F1A\u8BDD\uFF1A{usageDashboard.UnattributedSessions:n0}";
-        }
-
-        ActiveAccount = BuildActiveAccountSnapshot(_config, usageDashboard);
+        UsageText = projection.UsageText;
+        ActiveAccount = ToActiveAccountSnapshot(projection.ActiveAccount);
     }
+
+    private static AccountListItem ToAccountListItem(AccountProjectionItem item)
+        => new()
+        {
+            ProviderId = item.ProviderId,
+            AccountId = item.AccountId,
+            Name = item.Name,
+            ProviderBadge = item.ProviderBadge,
+            TierBadgeText = item.TierBadgeText,
+            CompactMetaText = item.CompactMetaText,
+            Subtitle = item.Subtitle,
+            IsActive = item.IsActive,
+            IsOpenAi = item.IsOpenAi,
+            NeedsReauthorization = item.NeedsReauthorization,
+            CanProbe = item.CanProbe,
+            CanRefreshOfficialQuota = item.CanRefreshOfficialQuota,
+            StatusText = item.StatusText,
+            StatusBrush = item.StatusBrush,
+            DailyTokens = item.DailyTokens,
+            WeeklyTokens = item.WeeklyTokens,
+            MonthlyTokens = item.MonthlyTokens,
+            FiveHourUsedPercent = item.FiveHourUsedPercent,
+            WeeklyUsedPercent = item.WeeklyUsedPercent,
+            FiveHourQuotaLabel = item.FiveHourQuotaLabel,
+            WeeklyQuotaLabel = item.WeeklyQuotaLabel,
+            FiveHourQuotaInlineLabel = item.FiveHourQuotaInlineLabel,
+            WeeklyQuotaInlineLabel = item.WeeklyQuotaInlineLabel,
+            FiveHourAvailableText = item.FiveHourAvailableText,
+            WeeklyAvailableText = item.WeeklyAvailableText,
+            FiveHourProgressBrush = item.FiveHourProgressBrush,
+            WeeklyProgressBrush = item.WeeklyProgressBrush
+        };
+
+    private static ActiveAccountSnapshot ToActiveAccountSnapshot(ActiveAccountProjection item)
+        => new()
+        {
+            Title = item.Title,
+            AccountTypeLabel = item.AccountTypeLabel,
+            ProviderBadge = item.ProviderBadge,
+            TierBadgeText = item.TierBadgeText,
+            StatusText = item.StatusText,
+            StatusBrush = item.StatusBrush,
+            Subtitle = item.Subtitle,
+            PrimaryMetric = item.PrimaryMetric,
+            SecondaryMetric = item.SecondaryMetric,
+            DailyTokens = item.DailyTokens,
+            WeeklyTokens = item.WeeklyTokens,
+            MonthlyTokens = item.MonthlyTokens,
+            ShowQuotaBars = item.ShowQuotaBars,
+            ShowTokenGrid = item.ShowTokenGrid,
+            FiveHourUsedPercent = item.FiveHourUsedPercent,
+            WeeklyUsedPercent = item.WeeklyUsedPercent,
+            FiveHourQuotaLabel = item.FiveHourQuotaLabel,
+            WeeklyQuotaLabel = item.WeeklyQuotaLabel,
+            FiveHourQuotaInlineLabel = item.FiveHourQuotaInlineLabel,
+            WeeklyQuotaInlineLabel = item.WeeklyQuotaInlineLabel,
+            FiveHourAvailableText = item.FiveHourAvailableText,
+            WeeklyAvailableText = item.WeeklyAvailableText,
+            FiveHourProgressBrush = item.FiveHourProgressBrush,
+            WeeklyProgressBrush = item.WeeklyProgressBrush,
+            IsOpenAi = item.IsOpenAi,
+            HasSelection = item.HasSelection
+        };
 
     private static List<T> Upsert<T>(IEnumerable<T> source, Func<T, bool> predicate, T item)
     {
@@ -1549,37 +1244,6 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         list.Add(item);
         return list;
     }
-
-    private static IEnumerable<AccountRecord> OrderedAccounts(AppConfig config, UsageDashboard usageDashboard)
-    {
-        var usageByAccount = usageDashboard.Accounts.ToDictionary(
-            account => (account.ProviderId, account.AccountId),
-            account => account,
-            EqualityComparer<(string ProviderId, string AccountId)>.Default);
-
-        return config.Settings.AccountSortMode == AccountSortMode.Usage
-            ? config.Accounts
-                .OrderBy(account => OpenAiQuotaPolicy.DisplaySortBucket(account))
-                .ThenBy(account => OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account) ? OpenAiQuotaPolicy.UsedPercentOrMax(account.FiveHourQuota) : int.MaxValue)
-                .ThenBy(account => OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account) ? OpenAiQuotaPolicy.UsedPercentOrMax(account.WeeklyQuota) : int.MaxValue)
-                .ThenByDescending(account => usageByAccount.TryGetValue((account.ProviderId, account.AccountId), out var usage) ? usage.Last30Days.TotalTokens : 0)
-                .ThenByDescending(account => usageByAccount.TryGetValue((account.ProviderId, account.AccountId), out var usage) ? usage.Today.TotalTokens : 0)
-                .ThenBy(account => OpenAiQuotaPolicy.RoutingStatusRank(account))
-                .ThenByDescending(account => account.LastUsedAt ?? DateTimeOffset.MinValue)
-                .ThenBy(account => account.ManualOrder <= 0 ? int.MaxValue : account.ManualOrder)
-                .ThenBy(account => account.ProviderId, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(account => account.Label, StringComparer.OrdinalIgnoreCase)
-            : config.Accounts
-                .OrderBy(account => account.ManualOrder <= 0 ? int.MaxValue : account.ManualOrder)
-                .ThenBy(account => account.ProviderId, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(account => account.Label, StringComparer.OrdinalIgnoreCase);
-    }
-
-    private static IEnumerable<AccountRecord> OrderedAccountsByManualOrder(AppConfig config)
-        => config.Accounts
-            .OrderBy(account => account.ManualOrder <= 0 ? int.MaxValue : account.ManualOrder)
-            .ThenBy(account => account.ProviderId, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(account => account.Label, StringComparer.OrdinalIgnoreCase);
 
     private static int NextManualOrder(AppConfig config)
         => config.Accounts.Count == 0 ? 1 : config.Accounts.Max(account => account.ManualOrder) + 1;
@@ -1591,240 +1255,6 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RoutingModeBadgeText)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RoutingDescriptionText)));
     }
-
-    private static string BuildRoutingModeBadgeText(OpenAiAccountMode mode)
-        => mode == OpenAiAccountMode.AggregateGateway ? "\u81EA\u52A8" : "\u624B\u52A8";
-
-    private static string BuildRoutingDescriptionText(OpenAiAccountMode mode)
-        => mode == OpenAiAccountMode.AggregateGateway
-            ? "\u81EA\u52A8\u6839\u636E\u72B6\u6001\u3001\u989D\u5EA6\u4FE1\u606F\u4E0E\u672C\u5730\u4F7F\u7528\u91CF\u9009\u62E9\u66F4\u5408\u9002\u7684 Provider / \u8D26\u53F7"
-            : "\u59CB\u7EC8\u4F7F\u7528\u5F53\u524D\u624B\u52A8\u9009\u4E2D\u7684 Provider / \u8D26\u53F7";
-
-    private static string BuildAccountProviderBadge(ProviderDefinition? provider, AccountRecord account)
-    {
-        if (OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account))
-        {
-            return "OpenAI";
-        }
-
-        return string.IsNullOrWhiteSpace(provider?.DisplayName) ? "\u517C\u5BB9" : provider.DisplayName;
-    }
-
-    private static string BuildAccountTitle(AccountRecord account)
-    {
-        var workspaceName = OpenAiAccountDisplayFormatter.EffectiveWorkspaceName(account);
-        if (!OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account) ||
-            string.IsNullOrWhiteSpace(account.Email) ||
-            string.IsNullOrWhiteSpace(workspaceName) ||
-            string.Equals(workspaceName, "Current workspace", StringComparison.OrdinalIgnoreCase))
-        {
-            return account.Label;
-        }
-
-        return IsDuplicateAccountText(account.Email, workspaceName)
-            ? account.Email!
-            : $"{account.Email} · {workspaceName}";
-    }
-
-    private static string BuildCompactAccountMetaText(ProviderDefinition? provider, AccountRecord account)
-    {
-        if (OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account))
-        {
-            return BuildAccountTierBadgeText(account);
-        }
-
-        return string.IsNullOrWhiteSpace(provider?.DisplayName)
-            ? account.ProviderId
-            : provider.DisplayName;
-    }
-
-    private static string BuildAccountSubtitle(
-        ProviderDefinition? provider,
-        AccountRecord account,
-        IReadOnlyList<AccountRecord>? allAccounts = null)
-    {
-        var subtitle = OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account)
-            ? BuildOpenAiWorkspaceSubtitle(account, allAccounts)
-            : provider is null ? account.AccountId : BuildCompatibleSubtitle(provider, account);
-
-        return IsDuplicateAccountText(account.Label, subtitle) ? "" : subtitle;
-    }
-
-    private static string BuildOpenAiWorkspaceSubtitle(
-        AccountRecord account,
-        IReadOnlyList<AccountRecord>? allAccounts)
-    {
-        var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(account.Email))
-        {
-            parts.Add(account.Email!);
-        }
-
-        var tier = OpenAiAccountDisplayFormatter.FormatTier(account);
-        if (!string.IsNullOrWhiteSpace(tier))
-        {
-            parts.Add(tier);
-        }
-
-        if (!string.IsNullOrWhiteSpace(account.WorkspaceType) &&
-            !string.Equals(account.WorkspaceType, tier, StringComparison.OrdinalIgnoreCase))
-        {
-            parts.Add(account.WorkspaceType!);
-        }
-
-        if (!string.IsNullOrWhiteSpace(account.SeatType))
-        {
-            parts.Add(account.SeatType!);
-        }
-
-        if (allAccounts is not null && OpenAiQuotaPolicy.HasSharedQuotaScope(account, allAccounts))
-        {
-            parts.Add("shared quota");
-        }
-
-        return parts.Count == 0 ? "OpenAI OAuth \u8D26\u53F7" : string.Join(" · ", parts);
-    }
-
-    private static bool IsDuplicateAccountText(string primary, string secondary)
-    {
-        if (string.IsNullOrWhiteSpace(primary) || string.IsNullOrWhiteSpace(secondary))
-        {
-            return false;
-        }
-
-        return string.Equals(primary.Trim(), secondary.Trim(), StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string BuildAccountTierBadgeText(AccountRecord account)
-        => OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account)
-            ? OpenAiAccountDisplayFormatter.FormatTier(account) ?? ""
-            : "";
-
-    private static string BuildAccountStatusText(ProviderDefinition? provider, AccountRecord account)
-    {
-        if (provider?.Kind == ProviderKind.OpenAiOAuth || OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account))
-        {
-            if (!string.IsNullOrWhiteSpace(account.OfficialUsageError))
-            {
-                return "\u5B98\u65B9\u989D\u5EA6\u5237\u65B0\u5931\u8D25";
-            }
-
-            return account.OfficialUsageFetchedAt.HasValue
-                ? "\u5B98\u65B9\u989D\u5EA6\u5237\u65B0\u6210\u529F"
-                : "\u5B98\u65B9\u989D\u5EA6\u5C1A\u672A\u5237\u65B0";
-        }
-
-        return account.Status switch
-        {
-            AccountStatus.Active => "Provider \u53EF\u7528",
-            AccountStatus.NeedsReauth => "Provider \u4E0D\u53EF\u7528",
-            AccountStatus.Revoked => "Provider \u4E0D\u53EF\u7528",
-            _ => "Provider \u5F85\u68C0\u67E5"
-        };
-    }
-
-    private static string BuildAccountStatusBrush(ProviderDefinition? provider, AccountRecord account)
-    {
-        if (provider?.Kind == ProviderKind.OpenAiOAuth || OpenAiQuotaPolicy.IsOpenAiOAuthAccount(account))
-        {
-            if (!string.IsNullOrWhiteSpace(account.OfficialUsageError))
-            {
-                return "#C42B1C";
-            }
-
-            return account.OfficialUsageFetchedAt.HasValue ? "#107C10" : "#9E9E9E";
-        }
-
-        return account.Status switch
-        {
-            AccountStatus.Active => "#107C10",
-            AccountStatus.NeedsReauth => "#C42B1C",
-            AccountStatus.Revoked => "#C42B1C",
-            _ => "#9E9E9E"
-        };
-    }
-
-    private static int ClampUsagePercent(QuotaUsageSnapshot snapshot)
-    {
-        if (!snapshot.HasValue)
-        {
-            return 0;
-        }
-
-        var usedPercent = OpenAiQuotaPolicy.UsedPercentOrMax(snapshot);
-        return usedPercent == int.MaxValue ? 0 : Math.Clamp(usedPercent, 0, 100);
-    }
-
-    private static string BuildUsageBrush(int usedPercent)
-        => usedPercent < 50
-            ? "#107C10"
-            : usedPercent < 80
-                ? "#F9A825"
-                : "#C42B1C";
-
-    private static string BuildAvailableQuotaText(QuotaUsageSnapshot snapshot)
-    {
-        if (!snapshot.HasValue)
-        {
-            return "\u5F85\u83B7\u53D6";
-        }
-
-        return $"{OpenAiQuotaDisplayFormatter.FormatRemainingValue(snapshot)} \u53EF\u7528";
-    }
-
-    private static string BuildOfficialUsageSuffix(AccountRecord account)
-    {
-        if (!string.Equals(account.ProviderId, "openai", StringComparison.OrdinalIgnoreCase))
-        {
-            return "";
-        }
-
-        var parts = new List<string>();
-        var tier = OpenAiAccountDisplayFormatter.FormatTier(account);
-        if (!string.IsNullOrWhiteSpace(tier))
-        {
-            parts.Add(tier);
-        }
-
-        var fiveHour = OpenAiQuotaDisplayFormatter.FormatCompactRemaining(account.FiveHourQuota, "5h");
-        if (!string.IsNullOrWhiteSpace(fiveHour))
-        {
-            parts.Add(fiveHour);
-        }
-
-        var weekly = OpenAiQuotaDisplayFormatter.FormatCompactRemaining(account.WeeklyQuota, "\u5468");
-        if (!string.IsNullOrWhiteSpace(weekly))
-        {
-            parts.Add(weekly);
-        }
-
-        if (!string.IsNullOrWhiteSpace(account.OfficialUsageError))
-        {
-            parts.Add(BuildQuotaErrorTag(account));
-        }
-
-        if (parts.Count == 0)
-        {
-            return "";
-        }
-
-        return $" [{string.Join(" | ", parts)}]";
-    }
-
-    private static string BuildQuotaErrorTag(AccountRecord account)
-    {
-        if (OpenAiQuotaPolicy.NeedsReauth(account))
-        {
-            return "\u9700\u8981\u91CD\u65B0\u767B\u5F55";
-        }
-
-        return OpenAiQuotaPolicy.HasAnyOfficialQuota(account)
-            ? "\u989D\u5EA6\u5FEB\u7167\u5DF2\u8FC7\u671F"
-            : "\u989D\u5EA6\u83B7\u53D6\u5931\u8D25";
-    }
-
-    private static string BuildQuotaStatusText(AppConfig config)
-        => "";
 
     private static string BuildRelativeRefreshText(DateTimeOffset refreshedAt, DateTimeOffset now)
     {
@@ -1855,159 +1285,6 @@ public sealed class MainFlyoutViewModel : INotifyPropertyChanged
         }
 
         return $"\u4E0A\u6B21\u5237\u65B0\uFF1A{Math.Max(1, (int)delta.TotalDays)} \u5929\u524D";
-    }
-
-    private static string BuildRoutingModeText(OpenAiAccountMode mode)
-        => mode == OpenAiAccountMode.AggregateGateway
-            ? "OpenAI \u8DEF\u7531\uFF1A\u805A\u5408\u7F51\u5173"
-            : "OpenAI \u8DEF\u7531\uFF1A\u624B\u52A8\u5207\u6362";
-
-    private static ActiveAccountSnapshot BuildActiveAccountSnapshot(AppConfig config, UsageDashboard usageDashboard)
-    {
-        if (config.ActiveSelection is null)
-        {
-            return ActiveAccountSnapshot.Empty with
-            {
-                Title = "\u5F53\u524D\u672A\u6FC0\u6D3B\u8D26\u53F7",
-                Subtitle = "\u8BF7\u5148\u5728\u4E3B\u6D6E\u7A97\u9009\u62E9\u4E00\u4E2A\u8D26\u53F7\u5E76\u70B9\u51FB\u201C\u5207\u6362\u201D\u3002",
-                PrimaryMetric = "\u4ECA\u65E5 0 tokens",
-                SecondaryMetric = "\u8FD1 7 \u5929 0 tokens"
-            };
-        }
-
-        var account = config.Accounts.FirstOrDefault(item =>
-            string.Equals(item.ProviderId, config.ActiveSelection.ProviderId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(item.AccountId, config.ActiveSelection.AccountId, StringComparison.OrdinalIgnoreCase));
-        var provider = config.Providers.FirstOrDefault(item =>
-            string.Equals(item.ProviderId, config.ActiveSelection.ProviderId, StringComparison.OrdinalIgnoreCase));
-        if (account is null || provider is null)
-        {
-            return ActiveAccountSnapshot.Empty with
-            {
-                Title = "\u5F53\u524D\u6FC0\u6D3B\u8D26\u53F7\u5DF2\u4E0D\u5B58\u5728",
-                Subtitle = "\u8BF7\u5237\u65B0\u4E3B\u6D6E\u7A97\u540E\u91CD\u65B0\u9009\u62E9\u3002",
-                PrimaryMetric = "\u8BF7\u5237\u65B0"
-            };
-        }
-
-        var usage = usageDashboard.Accounts.FirstOrDefault(item =>
-            string.Equals(item.ProviderId, account.ProviderId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(item.AccountId, account.AccountId, StringComparison.OrdinalIgnoreCase));
-        var useCompactTokenUnit = provider.Kind == ProviderKind.OpenAiCompatible;
-        var daily = FormatTokenCount(usage?.Today.TotalTokens ?? 0, useCompactTokenUnit);
-        var weekly = FormatTokenCount(usage?.Last7Days.TotalTokens ?? 0, useCompactTokenUnit);
-        var monthly = FormatTokenCount(usage?.Last30Days.TotalTokens ?? 0, useCompactTokenUnit);
-        var subtitle = BuildAccountSubtitle(provider, account, config.Accounts);
-
-        if (provider.Kind == ProviderKind.OpenAiOAuth)
-        {
-            var fiveHourUsedPercent = ClampUsagePercent(account.FiveHourQuota);
-            var weeklyUsedPercent = ClampUsagePercent(account.WeeklyQuota);
-            return new ActiveAccountSnapshot
-            {
-                Title = BuildAccountTitle(account),
-                AccountTypeLabel = "OpenAI",
-                ProviderBadge = "OpenAI",
-                TierBadgeText = BuildAccountTierBadgeText(account),
-                StatusText = BuildAccountStatusText(provider, account),
-                StatusBrush = BuildAccountStatusBrush(provider, account),
-                Subtitle = subtitle,
-                PrimaryMetric = OpenAiQuotaDisplayFormatter.FormatCompactRemaining(account.FiveHourQuota, "5h") ?? "5h \u989D\u5EA6\u5C1A\u672A\u83B7\u53D6",
-                SecondaryMetric = OpenAiQuotaDisplayFormatter.FormatCompactRemaining(account.WeeklyQuota, "\u5468")
-                    ?? (!string.IsNullOrWhiteSpace(account.OfficialUsageError)
-                        ? BuildQuotaErrorTag(account)
-                        : "\u5B98\u65B9\u989D\u5EA6\u5FEB\u7167\u5C1A\u672A\u83B7\u53D6"),
-                DailyTokens = daily,
-                WeeklyTokens = weekly,
-                MonthlyTokens = monthly,
-                ShowQuotaBars = true,
-                FiveHourUsedPercent = fiveHourUsedPercent,
-                WeeklyUsedPercent = weeklyUsedPercent,
-                FiveHourQuotaLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.FiveHourQuota, "5h 额度"),
-                WeeklyQuotaLabel = OpenAiQuotaDisplayFormatter.FormatQuotaLabel(account.WeeklyQuota, "周额度"),
-                FiveHourQuotaInlineLabel = OpenAiQuotaDisplayFormatter.FormatInlineQuotaLabel(account.FiveHourQuota, "5h"),
-                WeeklyQuotaInlineLabel = OpenAiQuotaDisplayFormatter.FormatInlineQuotaLabel(account.WeeklyQuota, "week"),
-                FiveHourAvailableText = BuildAvailableQuotaText(account.FiveHourQuota),
-                WeeklyAvailableText = BuildAvailableQuotaText(account.WeeklyQuota),
-                FiveHourProgressBrush = BuildUsageBrush(fiveHourUsedPercent),
-                WeeklyProgressBrush = BuildUsageBrush(weeklyUsedPercent),
-                IsOpenAi = true,
-                HasSelection = true
-            };
-        }
-
-        return new ActiveAccountSnapshot
-        {
-            Title = account.Label,
-            AccountTypeLabel = "\u517C\u5BB9 Provider",
-            ProviderBadge = "\u517C\u5BB9",
-            TierBadgeText = "",
-            StatusText = BuildAccountStatusText(provider, account),
-            StatusBrush = BuildAccountStatusBrush(provider, account),
-            Subtitle = subtitle,
-            PrimaryMetric = $"\u4ECA\u65E5 {daily} tokens",
-            SecondaryMetric = $"\u8FD1 7 \u5929 {weekly} tokens",
-            DailyTokens = daily,
-            WeeklyTokens = weekly,
-            MonthlyTokens = monthly,
-            ShowTokenGrid = true,
-            IsOpenAi = false,
-            HasSelection = true
-        };
-    }
-
-    private static string BuildCompatibleSubtitle(ProviderDefinition provider, AccountRecord account)
-    {
-        if (!string.IsNullOrWhiteSpace(provider.BaseUrl))
-        {
-            return $"{provider.DisplayName} · {provider.BaseUrl}";
-        }
-
-        return $"{provider.DisplayName} · {account.AccountId}";
-    }
-
-    private static string FormatTokenCount(long tokens, bool useCompactUnit = false)
-    {
-        if (!useCompactUnit || Math.Abs(tokens) < 10_000)
-        {
-            return tokens.ToString("n0");
-        }
-
-        var absolute = Math.Abs((double)tokens);
-        var units = new (double Divisor, string Suffix)[]
-        {
-            (1_000_000_000d, "B"),
-            (1_000_000d, "M"),
-            (1_000d, "K")
-        };
-
-        foreach (var unit in units)
-        {
-            if (absolute < unit.Divisor)
-            {
-                continue;
-            }
-
-            var value = tokens / unit.Divisor;
-            var decimals = Math.Abs(value) >= 100 ? 0 : Math.Abs(value) >= 10 ? 1 : 2;
-            var formatted = value.ToString($"F{decimals}", System.Globalization.CultureInfo.InvariantCulture)
-                .TrimEnd('0')
-                .TrimEnd('.');
-            return $"{formatted}{unit.Suffix}";
-        }
-
-        return tokens.ToString("n0");
-    }
-
-    private static string FormatProbeResult(CompatibleProviderProbeResult result)
-    {
-        var marker = result.Success ? "\u2713" : "\u2717";
-        var elapsedMs = Math.Max(1, (int)Math.Round(result.Elapsed.TotalMilliseconds));
-        var status = result.StatusCode.HasValue ? $"HTTP {result.StatusCode.Value}" : "\u65E0 HTTP \u72B6\u6001";
-        var suggestion = string.IsNullOrWhiteSpace(result.SuggestedBaseUrl)
-            ? ""
-            : $" \u5EFA\u8BAE\uFF1A{result.SuggestedBaseUrl}";
-        return $"{marker} {result.ProviderId}/{result.AccountId} {status} {elapsedMs}ms\uFF1A{result.Message}{suggestion}";
     }
 
     private sealed class BusyScope : IDisposable

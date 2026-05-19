@@ -1,6 +1,6 @@
 # CodexBar Windows Implementation Progress
 
-Last updated: 2026-05-09
+Last updated: 2026-05-19
 
 This file is the project progress ledger. Whenever a feature is added, changed, removed, or meaningfully fixed, update this document in the same change.
 
@@ -32,6 +32,7 @@ The current implementation is a working MVP with a native tray-window model (`Ma
 | Shared history pool preservation | `[x]` | Activation updates active config/auth state only. Tests assert session files are not rewritten. |
 | TOML / auth compatibility | `[x]` | Lightweight TOML editing preserves unrelated content. OAuth `auth.json` output now includes Codex-required top-level `last_refresh`. |
 | Atomic activation write | `[x]` | `config.toml` and `auth.json` are written through transaction/rollback flow. |
+| Application workflow layer | `[x]` | `CodexBar.Application` centralizes config hydration, account activation, dashboard projection, official quota refresh, compatible API probing, draft probes, active-selection resolution, and aggregate-gateway resolution so WPF / API / CLI entrypoints share the same workflows. |
 | OpenAI OAuth browser flow | `[x]` | PKCE, browser auth, localhost callback capture, and manual callback/code fallback are wired. Successful saves now rotate to a fresh OAuth attempt, explicitly cancel and release any stale `localhost:1455` listener before starting the next flow, full callback URLs must match the current `state`, and manual fallback always prefers the current pasted input over stale captured tokens. |
 | OpenAI OAuth account naming | `[x]` | Account label/email/sub are backfilled from `id_token` when available. |
 | Local API browser CORS boundary | `[x]` | Cross-origin browser access is limited to trusted loopback origins only: the API self-host origin plus the frontend rebuild dev/preview origins on ports `5173` and `4173`. Arbitrary external pages cannot read or mutate the local API. |
@@ -40,7 +41,7 @@ The current implementation is a working MVP with a native tray-window model (`Ma
 | OpenAI workspace switching | `[x]` | OpenAI OAuth account records now retain ChatGPT/Codex workspace metadata (`workspace_id`, workspace name/type, seat type, and quota scope). Activation and quota refresh use the selected workspace/account id without splitting the shared `.codex` history pool, and the OAuth dialog can choose among discovered workspaces. |
 | OpenAI-compatible providers | `[x]` | Provider ID/name/base URL plus account/API key are supported. Activation writes Codex-native provider config and `apikey` auth, launched Codex child processes receive the active compatible key as `OPENAI_API_KEY`, compatible activation preserves the existing OAuth identity snapshot when available, and compatible providers can map their Codex-facing provider ID to `openai` for Desktop history filtering via `openai_base_url` without overriding reserved built-ins. |
 | Multiple API keys under same provider | `[x]` | Supported by reusing provider ID with different account IDs. |
-| Compatible Provider connectivity probe | `[x]` | Main flyout and CLI can probe compatible accounts through `/models` and suggest a missing `/v1` Base URL when detected. |
+| Compatible Provider connectivity probe | `[x]` | Main flyout, Add/Edit popup windows, API, and CLI can probe compatible accounts through shared application workflows, return clean failure results for invalid Base URLs, and suggest a missing `/v1` Base URL when detected. |
 | Account edit UI | `[x]` | Temporary UI can edit labels; compatible providers can edit internal Provider ID, Codex Provider ID, name, base URL, API key, and reset CodexBar's local token-count attribution start point. |
 | Manual account ordering | `[x]` | `ManualOrder` is persisted and temporary UI supports Up/Down. Reorder writes now require a complete, non-duplicate account set so partial/stale payloads cannot silently drop omitted accounts. |
 | Usage-based ordering | `[~]` | Ordering prefers official OpenAI quota pressure when present, then local usage history. Attribution still depends on recorded successful switch journal entries. |
@@ -74,7 +75,7 @@ Latest known result:
 
 ```text
 build: succeeded, 0 warnings, 0 errors
-tests: 84 passed
+tests: 97 passed
 ```
 
 Current automated coverage includes:
@@ -95,6 +96,13 @@ Current automated coverage includes:
 - OAuth manual callback parsing
 - OAuth session isolation for manual fallback and post-save reset
 - OAuth flow rotation cancels stale loopback listeners before restarting localhost capture
+- application-layer config hydration and manual-order normalization
+- application-layer account activation workflow and active-selection validation
+- application-layer dashboard projection
+- application-layer combined official quota refresh and compatible probe workflows
+- application-layer targeted official quota refresh / compatible API probe workflows
+- application-layer compatible draft probe workflow
+- application-layer aggregate-gateway resolution workflow
 - usage scanner read-only behavior
 - usage scanner locked active session tolerance
 - compatible-provider token reset attribution marker
@@ -190,6 +198,14 @@ Enable aggregate mode in app config:
 ```
 
 ## Recent Change Log
+
+### 2026-05-19
+
+- Added `CodexBar.Application` as the shared application workflow layer for config hydration, account activation, dashboard projection, account health refresh, compatible draft probes, active-selection resolution, and aggregate-gateway resolution.
+- Refactored WPF, local API, and CLI entrypoints to call the application workflows instead of duplicating account refresh, compatible probing, activation, and gateway decision logic.
+- Routed Add/Edit compatible-provider connection tests through `CompatibleDraftProbeWorkflow` and kept invalid Base URLs as probe failures instead of URI exceptions.
+- Preserved/refilled OpenAI quota-scope and workspace metadata during official quota merges while keeping user-edited labels and display fields intact.
+- Included the tray quick-switch polish in this branch: submenu items auto-size with tooltips and official-account labels show available quota rather than used quota.
 
 ### 2026-05-09
 

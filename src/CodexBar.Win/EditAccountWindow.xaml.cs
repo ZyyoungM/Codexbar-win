@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using CodexBar.Application;
 using CodexBar.Auth;
 using CodexBar.Core;
 
@@ -10,7 +11,6 @@ public partial class EditAccountWindow : Window
     private readonly ProviderKind _providerKind;
     private readonly string _originalProviderId;
     private readonly string _originalAccountId;
-    private readonly ProviderDefinition _provider;
     private readonly AccountRecord _account;
     private readonly WindowsCredentialSecretStore _secretStore = new();
     private bool _resetTokenCountRequested;
@@ -21,7 +21,6 @@ public partial class EditAccountWindow : Window
     {
         InitializeComponent();
 
-        _provider = provider;
         _account = account;
         _providerKind = provider.Kind;
         _originalProviderId = provider.ProviderId;
@@ -119,30 +118,17 @@ public partial class EditAccountWindow : Window
         try
         {
             ShowStatus("\u6B63\u5728\u6D4B\u8BD5\u8FDE\u63A5", "\u6B63\u5728\u63A2\u6D4B /models \u8FDE\u901A\u60C5\u51B5\u2026");
-            var provider = _provider with
+            var result = await new CompatibleDraftProbeWorkflow(_secretStore).ProbeAsync(new CompatibleDraftProbeRequest
             {
                 ProviderId = ProviderIdBox.Text.Trim(),
-                DisplayName = ProviderNameBox.Text.Trim(),
+                CodexProviderId = string.IsNullOrWhiteSpace(CodexProviderIdBox.Text) ? null : CodexProviderIdBox.Text.Trim(),
+                ProviderName = ProviderNameBox.Text.Trim(),
                 BaseUrl = BaseUrlBox.Text.Trim(),
-                CodexProviderId = string.IsNullOrWhiteSpace(CodexProviderIdBox.Text) ? null : CodexProviderIdBox.Text.Trim()
-            };
-            var account = _account with
-            {
-                ProviderId = provider.ProviderId,
-                Label = AccountLabelBox.Text.Trim()
-            };
-
-            CompatibleProviderProbeResult result;
-            if (!string.IsNullOrWhiteSpace(ApiKeyBox.Password))
-            {
-                result = await new CompatibleProviderProbeService(new InlineSecretStore(ApiKeyBox.Password))
-                    .ProbeAccountAsync(provider, account);
-            }
-            else
-            {
-                result = await new CompatibleProviderProbeService(_secretStore)
-                    .ProbeAccountAsync(provider, account);
-            }
+                AccountId = _account.AccountId,
+                AccountLabel = AccountLabelBox.Text.Trim(),
+                ApiKey = string.IsNullOrWhiteSpace(ApiKeyBox.Password) ? null : ApiKeyBox.Password,
+                CredentialRef = _account.CredentialRef
+            });
 
             var message = string.IsNullOrWhiteSpace(result.SuggestedBaseUrl)
                 ? result.Message
@@ -214,18 +200,6 @@ public partial class EditAccountWindow : Window
 
     private static SolidColorBrush CreateBrush(string hex)
         => new((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex)!);
-
-    private sealed class InlineSecretStore(string secret) : ISecretStore
-    {
-        public Task WriteSecretAsync(string credentialRef, string secretValue, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
-
-        public Task<string?> ReadSecretAsync(string credentialRef, CancellationToken cancellationToken = default)
-            => Task.FromResult<string?>(secret);
-
-        public Task DeleteSecretAsync(string credentialRef, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
-    }
 }
 
 public sealed record EditAccountResult(

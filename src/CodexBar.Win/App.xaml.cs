@@ -29,9 +29,8 @@ public partial class App : System.Windows.Application
     private bool _trayAccountsWarmAttempted;
     private System.Windows.Point? _overlayLocation;
     private double _overlayOpacity = 0.88;
-    private const int TrayMenuDefaultItemWidth = 320;
-    private const int TrayMenuMaximumItemWidth = 560;
-    private const int TrayMenuTextPaddingWidth = 46;
+    private const int TrayMenuDefaultItemWidth = 240;
+    private const int TrayMenuMaximumAccountLabelLength = 46;
     private readonly Drawing.Font _trayMenuFont = new("Microsoft YaHei UI", 9f, Drawing.FontStyle.Regular);
     private readonly Drawing.Font _trayMenuBoldFont = new("Microsoft YaHei UI", 9f, Drawing.FontStyle.Bold);
     private readonly Drawing.Font _trayMenuHeaderFont = new("Microsoft YaHei UI", 10.5f, Drawing.FontStyle.Bold);
@@ -169,16 +168,21 @@ public partial class App : System.Windows.Application
     private Forms.ToolStripMenuItem CreateMenuItem(
         string text,
         EventHandler? onClick = null,
-        int width = TrayMenuDefaultItemWidth)
+        int width = TrayMenuDefaultItemWidth,
+        bool autoSize = false)
     {
         var item = new Forms.ToolStripMenuItem(text)
         {
-            AutoSize = false,
-            Width = width,
+            AutoSize = autoSize,
             Height = 38,
             Margin = new Forms.Padding(2),
             Padding = new Forms.Padding(12, 8, 12, 8)
         };
+        if (!autoSize)
+        {
+            item.Width = width;
+        }
+
         if (onClick is not null)
         {
             item.Click += onClick;
@@ -449,9 +453,6 @@ public partial class App : System.Windows.Application
 
     private List<Forms.ToolStripItem> BuildQuickSwitchMenuItems()
     {
-        var accountLabels = _flyoutViewModel.Accounts.Select(BuildTrayAccountLabel).ToList();
-        var quickSwitchWidth = CalculateTrayMenuItemWidth(
-            ["\u5FEB\u901F\u9009\u62E9\u8D26\u53F7/API", .. accountLabels]);
         var quickSwitchMenu = CreateMenuItem("\u5FEB\u901F\u9009\u62E9\u8D26\u53F7/API");
         if (quickSwitchMenu.DropDown is Forms.ToolStripDropDownMenu dropDownMenu)
         {
@@ -466,27 +467,32 @@ public partial class App : System.Windows.Application
 
         if (_trayAccountsLoading && _flyoutViewModel.Accounts.Count == 0)
         {
-            quickSwitchMenu.DropDownItems.Add(CreateInfoMenuItem("\u6B63\u5728\u52A0\u8F7D\u8D26\u53F7...", quickSwitchWidth));
+            quickSwitchMenu.DropDownItems.Add(CreateInfoMenuItem("\u6B63\u5728\u52A0\u8F7D\u8D26\u53F7..."));
             items.Add(new Forms.ToolStripSeparator());
             return items;
         }
 
         if (_flyoutViewModel.Accounts.Count == 0)
         {
-            quickSwitchMenu.DropDownItems.Add(CreateInfoMenuItem("\u6682\u65E0\u53EF\u5207\u6362\u7684\u8D26\u53F7 / API", quickSwitchWidth));
+            quickSwitchMenu.DropDownItems.Add(CreateInfoMenuItem("\u6682\u65E0\u53EF\u5207\u6362\u7684\u8D26\u53F7 / API"));
             items.Add(new Forms.ToolStripSeparator());
             return items;
         }
 
         foreach (var account in _flyoutViewModel.Accounts)
         {
+            var fullLabel = BuildTrayAccountLabel(account);
+            var compactLabel = BuildTrayAccountDisplayLabel(account);
             var label = account.IsActive
-                ? $"\u2713 {BuildTrayAccountLabel(account)}"
-                : BuildTrayAccountLabel(account);
+                ? $"\u2713 {compactLabel}"
+                : compactLabel;
             var item = CreateMenuItem(
                 label,
                 async (_, _) => await QuickSwitchAccountAsync(account),
-                quickSwitchWidth);
+                autoSize: true);
+            item.ToolTipText = account.IsActive
+                ? $"\u5F53\u524D\u8D26\u53F7/API\uFF1A{fullLabel}"
+                : fullLabel;
             item.Enabled = !account.IsActive;
             item.ForeColor = account.IsActive
                 ? Drawing.Color.FromArgb(0, 103, 192)
@@ -499,24 +505,9 @@ public partial class App : System.Windows.Application
         return items;
     }
 
-    private int CalculateTrayMenuItemWidth(IReadOnlyCollection<string> labels)
+    private Forms.ToolStripMenuItem CreateInfoMenuItem(string text)
     {
-        var width = TrayMenuDefaultItemWidth;
-        foreach (var label in labels.Where(label => !string.IsNullOrWhiteSpace(label)))
-        {
-            width = Math.Max(
-                width,
-                Forms.TextRenderer.MeasureText(label, _trayMenuFont).Width + TrayMenuTextPaddingWidth);
-        }
-
-        var screenWidth = Forms.Screen.FromPoint(Forms.Cursor.Position).WorkingArea.Width;
-        var safeMaximumWidth = Math.Min(TrayMenuMaximumItemWidth, Math.Max(TrayMenuDefaultItemWidth, screenWidth - 80));
-        return Math.Min(width, safeMaximumWidth);
-    }
-
-    private Forms.ToolStripMenuItem CreateInfoMenuItem(string text, int width)
-    {
-        var item = CreateMenuItem(text, width: width);
+        var item = CreateMenuItem(text, autoSize: true);
         item.Enabled = false;
         item.ForeColor = Drawing.Color.FromArgb(96, 94, 92);
         item.Font = _trayMenuFont;
@@ -527,7 +518,7 @@ public partial class App : System.Windows.Application
     {
         if (item.IsOpenAi)
         {
-            return $"{item.Name} ({item.FiveHourUsedPercent}%/{item.WeeklyUsedPercent}%)";
+            return $"{item.Name} (\u53EF\u7528 {CompactAvailableQuota(item.FiveHourAvailableText)}/{CompactAvailableQuota(item.WeeklyAvailableText)})";
         }
 
         if (!string.IsNullOrWhiteSpace(item.ProviderBadge) &&
@@ -537,6 +528,46 @@ public partial class App : System.Windows.Application
         }
 
         return item.Name;
+    }
+
+    private static string BuildTrayAccountDisplayLabel(AccountListItem item)
+    {
+        if (item.IsOpenAi)
+        {
+            var quota = $"(\u53EF\u7528 {CompactAvailableQuota(item.FiveHourAvailableText)}/{CompactAvailableQuota(item.WeeklyAvailableText)})";
+            var name = CompactTrayMenuPart(item.Name, TrayMenuMaximumAccountLabelLength - quota.Length - 1);
+            return $"{name} {quota}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(item.ProviderBadge) &&
+            !string.Equals(item.ProviderBadge, item.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            var suffix = $" \u00B7 {item.ProviderBadge}";
+            var name = CompactTrayMenuPart(item.Name, TrayMenuMaximumAccountLabelLength - suffix.Length);
+            return $"{name}{suffix}";
+        }
+
+        return CompactTrayMenuPart(item.Name, TrayMenuMaximumAccountLabelLength);
+    }
+
+    private static string CompactAvailableQuota(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            string.Equals(value.Trim(), "\u5F85\u83B7\u53D6", StringComparison.OrdinalIgnoreCase))
+        {
+            return "--";
+        }
+
+        return value.Replace("\u53EF\u7528", "", StringComparison.Ordinal).Trim();
+    }
+
+    private static string CompactTrayMenuPart(string label, int maximumLength)
+    {
+        var value = string.IsNullOrWhiteSpace(label) ? "" : label.Trim();
+        var safeMaximumLength = Math.Max(12, maximumLength);
+        return value.Length <= safeMaximumLength
+            ? value
+            : value[..safeMaximumLength].TrimEnd() + "\u2026";
     }
 
     private async Task HandleStartupCommandAsync(StartupCommand command, string source)

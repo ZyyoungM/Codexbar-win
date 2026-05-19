@@ -74,7 +74,12 @@ public sealed class CompatibleProviderProbeService
             return ToResult(provider, account, provider.BaseUrl, configured);
         }
 
-        var suggestedBaseUrl = AppendV1(provider.BaseUrl);
+        var suggestedBaseUrl = TryAppendV1(provider.BaseUrl);
+        if (suggestedBaseUrl is null)
+        {
+            return ToResult(provider, account, provider.BaseUrl, configured);
+        }
+
         var suggested = await ProbeModelsEndpointAsync(suggestedBaseUrl, apiKey, cancellationToken);
         if (!suggested.Success)
         {
@@ -186,8 +191,10 @@ public sealed class CompatibleProviderProbeService
     private static bool ShouldNotTryV1Fallback(int? statusCode, string baseUrl)
         => statusCode is 401 or 403 || EndsWithV1Path(baseUrl);
 
-    private static string AppendV1(string baseUrl)
-        => EnsureTrailingSlash(new Uri(baseUrl)).ToString() + "v1";
+    private static string? TryAppendV1(string baseUrl)
+        => Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)
+            ? EnsureTrailingSlash(uri).ToString() + "v1"
+            : null;
 
     private static bool EndsWithV1Path(string baseUrl)
     {

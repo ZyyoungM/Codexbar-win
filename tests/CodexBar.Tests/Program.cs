@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using CodexBar.Auth;
+using CodexBar.Application;
 using CodexBar.Tests;
 using CodexBar.CodexCompat;
 using CodexBar.Core;
@@ -33,6 +34,18 @@ var tests = new (string Name, Func<Task> Run)[]
     ("oauth activation writes selected workspace account id", OAuthActivationWritesSelectedWorkspaceAccountIdTest),
     ("openai oauth url can restrict a workspace", OpenAiOAuthUrlCanRestrictWorkspaceTest),
     ("openai oauth token response stores chatgpt account id", OpenAiOAuthTokenResponseStoresChatGptAccountIdTest),
+    ("application hydration normalizes manual account order", ApplicationHydrationNormalizesManualOrderTest),
+    ("application hydration merges official usage into latest config", ApplicationHydrationMergesOfficialUsageIntoLatestConfigTest),
+    ("application health applies compatible probe statuses", ApplicationHealthAppliesCompatibleProbeStatusesTest),
+    ("application health refresh combines official and compatible checks", ApplicationHealthRefreshCombinesOfficialAndCompatibleChecksTest),
+    ("application health refresh targets official account", ApplicationHealthRefreshTargetsOfficialAccountTest),
+    ("application health probe targets compatible account", ApplicationHealthProbeTargetsCompatibleAccountTest),
+    ("application draft compatible probe builds result", ApplicationDraftCompatibleProbeBuildsResultTest),
+    ("application draft compatible probe uses saved credential ref", ApplicationDraftCompatibleProbeUsesSavedCredentialRefTest),
+    ("application gateway resolution preserves manual selections", ApplicationGatewayResolutionPreservesManualSelectionsTest),
+    ("application activation workflow persists active selection", ApplicationActivationWorkflowPersistsActiveSelectionTest),
+    ("application dashboard projection builds account cards", ApplicationDashboardProjectionBuildsAccountCardsTest),
+    ("application active selection resolver validates selected account", ApplicationActiveSelectionResolverValidatesSelectedAccountTest),
     ("transaction rolls back on validation failure", RollbackTest),
     ("manual callback parser accepts URL and code", ManualCallbackParserTest),
     ("openai workspace discovery reads id token organizations", OpenAiWorkspaceDiscoveryReadsIdTokenOrganizationsTest),
@@ -544,6 +557,820 @@ static async Task OAuthActivationWritesSelectedWorkspaceAccountIdTest()
     using var auth = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(codexHome, "auth.json")));
     var tokens = auth.RootElement.GetProperty("tokens");
     AssertEqual("workspace-team", tokens.GetProperty("account_id").GetString());
+}
+
+static async Task ApplicationHydrationNormalizesManualOrderTest()
+{
+    using var temp = TempDir.Create();
+    var store = new AppConfigStore(Path.Combine(temp.Path, "config.json"));
+    await store.SaveAsync(AppConfigStore.DefaultConfig() with
+    {
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "first",
+                Label = "First",
+                CredentialRef = "oauth:openai:first",
+                ManualOrder = 0
+            },
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "second",
+                Label = "Second",
+                CredentialRef = "oauth:openai:second",
+                ManualOrder = 0
+            }
+        ]
+    });
+
+    var service = new AppConfigHydrationService(store, new InMemorySecretStore());
+    var hydrated = await service.HydrateAsync(TimeSpan.Zero, refreshOfficialUsage: false);
+
+    AssertEqual(1, hydrated.Accounts[0].ManualOrder);
+    AssertEqual(2, hydrated.Accounts[1].ManualOrder);
+    var saved = await store.LoadAsync();
+    AssertEqual(1, saved.Accounts[0].ManualOrder);
+    AssertEqual(2, saved.Accounts[1].ManualOrder);
+}
+
+static async Task ApplicationHydrationMergesOfficialUsageIntoLatestConfigTest()
+{
+    using var temp = TempDir.Create();
+    var store = new AppConfigStore(Path.Combine(temp.Path, "config.json"));
+    var selectedAt = DateTimeOffset.Parse("2026-05-15T08:00:00Z");
+    var fetchedAt = DateTimeOffset.Parse("2026-05-15T09:00:00Z");
+    await store.SaveAsync(AppConfigStore.DefaultConfig() with
+    {
+        ActiveSelection = new CodexSelection
+        {
+            ProviderId = "compatible",
+            AccountId = "default",
+            SelectedAt = selectedAt
+        },
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "acct",
+                Label = "User Edited Label",
+                Email = "current@example.test",
+                WorkspaceName = "Current Workspace",
+                Tier = AccountTier.Free,
+                CredentialRef = "oauth:openai:acct",
+                ManualOrder = 9,
+                Status = AccountStatus.NeedsReauth
+            },
+            new AccountRecord
+            {
+                ProviderId = "compatible",
+                AccountId = "default",
+                Label = "Compatible",
+                CredentialRef = "api-key:compatible:default",
+                ManualOrder = 1
+            }
+        ]
+    });
+
+    var service = new AppConfigHydrationService(store, new InMemorySecretStore());
+    var merged = await service.MergeOfficialUsageAccountsAsync(
+    [
+        new AccountRecord
+        {
+            ProviderId = "openai",
+            AccountId = "acct",
+            Label = "Refreshed Label Must Not Replace User Edit",
+            Email = "refreshed@example.test",
+            SubjectId = "sub-refreshed",
+            OpenAiAccountId = "account-refreshed",
+            WorkspaceId = "workspace-refreshed",
+            WorkspaceName = "Refreshed Workspace",
+            WorkspaceType = "team",
+            SeatType = "member",
+            QuotaScopeKey = "quota-refreshed",
+            Tier = AccountTier.Pro,
+            OfficialPlanTypeRaw = "pro",
+            FiveHourQuota = new QuotaUsageSnapshot
+            {
+                Used = 25,
+                Limit = 100,
+                WindowSeconds = 18000,
+                ResetAt = fetchedAt.AddHours(4)
+            },
+            WeeklyQuota = new QuotaUsageSnapshot
+            {
+                Used = 50,
+                Limit = 100,
+                WindowSeconds = 604800,
+                ResetAt = fetchedAt.AddDays(3)
+            },
+            OfficialUsageFetchedAt = fetchedAt,
+            OfficialUsageError = "ignored",
+            CredentialRef = "oauth:openai:acct",
+            ManualOrder = 1,
+            Status = AccountStatus.Active
+        }
+    ]);
+
+    var openAi = merged.Accounts.Single(account => account.ProviderId == "openai");
+    AssertEqual("User Edited Label", openAi.Label);
+    AssertEqual("current@example.test", openAi.Email);
+    AssertEqual("sub-refreshed", openAi.SubjectId);
+    AssertEqual("account-refreshed", openAi.OpenAiAccountId);
+    AssertEqual("workspace-refreshed", openAi.WorkspaceId);
+    AssertEqual("Current Workspace", openAi.WorkspaceName);
+    AssertEqual("team", openAi.WorkspaceType);
+    AssertEqual("member", openAi.SeatType);
+    AssertEqual("quota-refreshed", openAi.QuotaScopeKey);
+    AssertEqual(9, openAi.ManualOrder);
+    AssertEqual(AccountTier.Pro, openAi.Tier);
+    AssertEqual("pro", openAi.OfficialPlanTypeRaw);
+    AssertEqual(25, openAi.FiveHourQuota.Used);
+    AssertEqual(50, openAi.WeeklyQuota.Used);
+    AssertEqual(fetchedAt, openAi.OfficialUsageFetchedAt);
+    AssertEqual("ignored", openAi.OfficialUsageError);
+    AssertEqual(AccountStatus.Active, openAi.Status);
+    AssertEqual("compatible", merged.ActiveSelection?.ProviderId);
+    AssertEqual(selectedAt, merged.ActiveSelection?.SelectedAt);
+
+    var saved = await store.LoadAsync();
+    var savedOpenAi = saved.Accounts.Single(account => account.ProviderId == "openai");
+    AssertEqual("User Edited Label", savedOpenAi.Label);
+    AssertEqual("quota-refreshed", savedOpenAi.QuotaScopeKey);
+    AssertEqual(AccountTier.Pro, savedOpenAi.Tier);
+    AssertEqual(25, savedOpenAi.FiveHourQuota.Used);
+}
+
+static async Task ApplicationHealthAppliesCompatibleProbeStatusesTest()
+{
+    using var temp = TempDir.Create();
+    var store = new AppConfigStore(Path.Combine(temp.Path, "config.json"));
+    var selectedAt = DateTimeOffset.Parse("2026-05-15T10:00:00Z");
+    await store.SaveAsync(AppConfigStore.DefaultConfig() with
+    {
+        ActiveSelection = new CodexSelection
+        {
+            ProviderId = "compatible",
+            AccountId = "primary",
+            SelectedAt = selectedAt
+        },
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "compatible",
+                AccountId = "primary",
+                Label = "Primary User Label",
+                CredentialRef = "api-key:compatible:primary",
+                ManualOrder = 5,
+                Status = AccountStatus.NeedsReauth
+            },
+            new AccountRecord
+            {
+                ProviderId = "compatible",
+                AccountId = "secondary",
+                Label = "Secondary User Label",
+                CredentialRef = "api-key:compatible:secondary",
+                ManualOrder = 6,
+                Status = AccountStatus.Active
+            },
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "official",
+                Label = "Official",
+                CredentialRef = "oauth:openai:official",
+                ManualOrder = 7,
+                Status = AccountStatus.Active
+            }
+        ]
+    });
+
+    var service = new CompatibleProbeResultApplyService(store);
+    var updated = await service.ApplyAsync(
+    [
+        new CompatibleProviderProbeResult
+        {
+            ProviderId = "compatible",
+            AccountId = "primary",
+            Label = "Probe Label Must Not Replace User Edit",
+            BaseUrl = "https://example.test/v1",
+            Success = true
+        },
+        new CompatibleProviderProbeResult
+        {
+            ProviderId = "compatible",
+            AccountId = "secondary",
+            Label = "Secondary Probe",
+            BaseUrl = "https://example.test/v1",
+            Success = false
+        },
+        new CompatibleProviderProbeResult
+        {
+            ProviderId = "compatible",
+            AccountId = "missing",
+            Label = "Missing",
+            BaseUrl = "https://example.test/v1",
+            Success = false
+        }
+    ]);
+
+    var primary = updated.Accounts.Single(account => account.AccountId == "primary");
+    var secondary = updated.Accounts.Single(account => account.AccountId == "secondary");
+    var official = updated.Accounts.Single(account => account.AccountId == "official");
+    AssertEqual("Primary User Label", primary.Label);
+    AssertEqual(5, primary.ManualOrder);
+    AssertEqual(AccountStatus.Active, primary.Status);
+    AssertEqual("Secondary User Label", secondary.Label);
+    AssertEqual(6, secondary.ManualOrder);
+    AssertEqual(AccountStatus.NeedsReauth, secondary.Status);
+    AssertEqual(AccountStatus.Active, official.Status);
+    AssertEqual("compatible", updated.ActiveSelection?.ProviderId);
+    AssertEqual(selectedAt, updated.ActiveSelection?.SelectedAt);
+
+    var saved = await store.LoadAsync();
+    var savedPrimary = saved.Accounts.Single(account => account.AccountId == "primary");
+    var savedSecondary = saved.Accounts.Single(account => account.AccountId == "secondary");
+    AssertEqual("Primary User Label", savedPrimary.Label);
+    AssertEqual(AccountStatus.Active, savedPrimary.Status);
+    AssertEqual(AccountStatus.NeedsReauth, savedSecondary.Status);
+}
+
+static async Task ApplicationHealthRefreshCombinesOfficialAndCompatibleChecksTest()
+{
+    using var temp = TempDir.Create();
+    var store = new AppConfigStore(Path.Combine(temp.Path, "config.json"));
+    var fetchedAt = DateTimeOffset.Parse("2026-05-15T11:00:00Z");
+    await store.SaveAsync(AppConfigStore.DefaultConfig() with
+    {
+        Providers =
+        [
+            new ProviderDefinition
+            {
+                ProviderId = "openai",
+                DisplayName = "OpenAI",
+                Kind = ProviderKind.OpenAiOAuth,
+                AuthMode = AuthMode.OAuth
+            },
+            new ProviderDefinition
+            {
+                ProviderId = "compatible",
+                DisplayName = "Compatible",
+                Kind = ProviderKind.OpenAiCompatible,
+                AuthMode = AuthMode.ApiKey,
+                BaseUrl = "https://example.test/v1"
+            }
+        ],
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "official",
+                Label = "Official",
+                CredentialRef = "oauth:openai:official",
+                Tier = AccountTier.Free
+            },
+            new AccountRecord
+            {
+                ProviderId = "compatible",
+                AccountId = "primary",
+                Label = "Primary",
+                CredentialRef = "api-key:compatible:primary",
+                Status = AccountStatus.Active
+            }
+        ]
+    });
+
+    var refreshedOfficialIds = new List<string>();
+    IReadOnlyList<AccountRecord>? probedAccounts = null;
+    var workflow = new AccountHealthRefreshWorkflow(
+        store,
+        new AppConfigHydrationService(store, new InMemorySecretStore()),
+        new CompatibleProbeResultApplyService(store),
+        (account, _) =>
+        {
+            refreshedOfficialIds.Add(account.AccountId);
+            return Task.FromResult(account with
+            {
+                Tier = AccountTier.Pro,
+                OfficialPlanTypeRaw = "pro",
+                OfficialUsageFetchedAt = fetchedAt,
+                FiveHourQuota = new QuotaUsageSnapshot { Used = 10, Limit = 100 },
+                Status = AccountStatus.Active
+            });
+        },
+        (config, accounts, _) =>
+        {
+            var official = config.Accounts.Single(account => account.AccountId == "official");
+            AssertEqual(AccountTier.Pro, official.Tier);
+            probedAccounts = accounts;
+            return Task.FromResult<IReadOnlyList<CompatibleProviderProbeResult>>(
+            [
+                new CompatibleProviderProbeResult
+                {
+                    ProviderId = "compatible",
+                    AccountId = "primary",
+                    Label = "Primary",
+                    BaseUrl = "https://example.test/v1",
+                    Success = false
+                }
+            ]);
+        });
+
+    var result = await workflow.RefreshQuotaAndApisAsync();
+
+    AssertEqual(1, refreshedOfficialIds.Count);
+    AssertEqual("official", refreshedOfficialIds[0]);
+    AssertEqual(1, probedAccounts?.Count ?? 0);
+    AssertEqual("primary", probedAccounts?[0].AccountId);
+    AssertEqual(1, result.OfficialAccountCount);
+    AssertEqual(0, result.OfficialFailedCount);
+    AssertEqual(1, result.CompatibleProbeCount);
+    AssertEqual(0, result.CompatibleProbeSuccessCount);
+
+    var officialAccount = result.UpdatedConfig.Accounts.Single(account => account.AccountId == "official");
+    var compatibleAccount = result.UpdatedConfig.Accounts.Single(account => account.AccountId == "primary");
+    AssertEqual(AccountTier.Pro, officialAccount.Tier);
+    AssertEqual(10, officialAccount.FiveHourQuota.Used);
+    AssertEqual(AccountStatus.NeedsReauth, compatibleAccount.Status);
+
+    var saved = await store.LoadAsync();
+    AssertEqual(AccountTier.Pro, saved.Accounts.Single(account => account.AccountId == "official").Tier);
+    AssertEqual(AccountStatus.NeedsReauth, saved.Accounts.Single(account => account.AccountId == "primary").Status);
+}
+
+static async Task ApplicationHealthRefreshTargetsOfficialAccountTest()
+{
+    using var temp = TempDir.Create();
+    var store = new AppConfigStore(Path.Combine(temp.Path, "config.json"));
+    await store.SaveAsync(AppConfigStore.DefaultConfig() with
+    {
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "first",
+                Label = "First",
+                CredentialRef = "oauth:openai:first",
+                Tier = AccountTier.Free
+            },
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "second",
+                Label = "Second",
+                CredentialRef = "oauth:openai:second",
+                Tier = AccountTier.Free
+            }
+        ]
+    });
+
+    var refreshedIds = new List<string>();
+    var workflow = new AccountHealthRefreshWorkflow(
+        store,
+        new AppConfigHydrationService(store, new InMemorySecretStore()),
+        new CompatibleProbeResultApplyService(store),
+        (account, _) =>
+        {
+            refreshedIds.Add(account.AccountId);
+            return Task.FromResult(account with
+            {
+                Tier = AccountTier.Pro,
+                OfficialPlanTypeRaw = "pro",
+                Status = AccountStatus.Active
+            });
+        },
+        (_, _, _) => Task.FromResult<IReadOnlyList<CompatibleProviderProbeResult>>([]));
+
+    var result = await workflow.RefreshOfficialQuotaAsync(new CodexSelection
+    {
+        ProviderId = "openai",
+        AccountId = "second"
+    });
+
+    AssertEqual(1, refreshedIds.Count);
+    AssertEqual("second", refreshedIds[0]);
+    AssertEqual(1, result.OfficialAccountCount);
+    AssertEqual(0, result.OfficialFailedCount);
+    AssertEqual(AccountTier.Free, result.UpdatedConfig.Accounts.Single(account => account.AccountId == "first").Tier);
+    AssertEqual(AccountTier.Pro, result.UpdatedConfig.Accounts.Single(account => account.AccountId == "second").Tier);
+}
+
+static async Task ApplicationHealthProbeTargetsCompatibleAccountTest()
+{
+    using var temp = TempDir.Create();
+    var store = new AppConfigStore(Path.Combine(temp.Path, "config.json"));
+    await store.SaveAsync(AppConfigStore.DefaultConfig() with
+    {
+        Providers =
+        [
+            new ProviderDefinition
+            {
+                ProviderId = "compatible",
+                DisplayName = "Compatible",
+                Kind = ProviderKind.OpenAiCompatible,
+                AuthMode = AuthMode.ApiKey,
+                BaseUrl = "https://example.test/v1"
+            }
+        ],
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "compatible",
+                AccountId = "first",
+                Label = "First",
+                CredentialRef = "api-key:compatible:first",
+                Status = AccountStatus.Active
+            },
+            new AccountRecord
+            {
+                ProviderId = "compatible",
+                AccountId = "second",
+                Label = "Second",
+                CredentialRef = "api-key:compatible:second",
+                Status = AccountStatus.Active
+            }
+        ]
+    });
+
+    IReadOnlyList<AccountRecord>? probedAccounts = null;
+    var workflow = new AccountHealthRefreshWorkflow(
+        store,
+        new AppConfigHydrationService(store, new InMemorySecretStore()),
+        new CompatibleProbeResultApplyService(store),
+        (account, _) => Task.FromResult(account),
+        (_, accounts, _) =>
+        {
+            probedAccounts = accounts;
+            return Task.FromResult<IReadOnlyList<CompatibleProviderProbeResult>>(
+            [
+                new CompatibleProviderProbeResult
+                {
+                    ProviderId = "compatible",
+                    AccountId = "second",
+                    Label = "Second",
+                    BaseUrl = "https://example.test/v1",
+                    Success = false
+                }
+            ]);
+        });
+
+    var result = await workflow.ProbeCompatibleApisAsync(new CodexSelection
+    {
+        ProviderId = "compatible",
+        AccountId = "second"
+    });
+
+    AssertEqual(1, probedAccounts?.Count ?? 0);
+    AssertEqual("second", probedAccounts?[0].AccountId);
+    AssertEqual(1, result.CompatibleProbeCount);
+    AssertEqual(0, result.CompatibleProbeSuccessCount);
+    AssertEqual(AccountStatus.Active, result.UpdatedConfig.Accounts.Single(account => account.AccountId == "first").Status);
+    AssertEqual(AccountStatus.NeedsReauth, result.UpdatedConfig.Accounts.Single(account => account.AccountId == "second").Status);
+}
+
+static async Task ApplicationGatewayResolutionPreservesManualSelectionsTest()
+{
+    using var temp = TempDir.Create();
+    var appPaths = AppPaths.Resolve(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["USERPROFILE"] = temp.Path
+    });
+    var config = new AppConfig
+    {
+        Settings = new AppSettings
+        {
+            OpenAiAccountMode = OpenAiAccountMode.ManualSwitch
+        },
+        Providers =
+        [
+            new ProviderDefinition
+            {
+                ProviderId = "openai",
+                DisplayName = "OpenAI",
+                Kind = ProviderKind.OpenAiOAuth,
+                AuthMode = AuthMode.OAuth
+            }
+        ],
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "acct",
+                Label = "OpenAI",
+                CredentialRef = "oauth:openai:acct"
+            }
+        ]
+    };
+
+    var workflow = new GatewayResolutionWorkflow(appPaths, new InMemorySecretStore());
+    var decision = await workflow.ResolveAsync(config, new CodexSelection
+    {
+        ProviderId = "openai",
+        AccountId = "acct"
+    });
+
+    AssertTrue(!decision.WasRerouted);
+    AssertEqual("openai", decision.ResolvedSelection.ProviderId);
+    AssertEqual("acct", decision.ResolvedSelection.AccountId);
+}
+
+static async Task ApplicationDraftCompatibleProbeBuildsResultTest()
+{
+    var workflow = new CompatibleDraftProbeWorkflow();
+    var result = await workflow.ProbeAsync(new CompatibleDraftProbeRequest
+    {
+        ProviderId = "draft",
+        AccountId = "acct",
+        ProviderName = "Draft Provider",
+        AccountLabel = "Draft Account",
+        BaseUrl = "not-a-valid-url",
+        ApiKey = "sk-test"
+    });
+
+    AssertTrue(!result.Success);
+    AssertEqual("draft", result.ProviderId);
+    AssertEqual("acct", result.AccountId);
+    AssertEqual("Draft Account", result.Label);
+}
+
+static async Task ApplicationDraftCompatibleProbeUsesSavedCredentialRefTest()
+{
+    var secrets = new RecordingSecretStore("api-key:draft:acct", "sk-test");
+    var workflow = new CompatibleDraftProbeWorkflow(secrets);
+    var result = await workflow.ProbeAsync(new CompatibleDraftProbeRequest
+    {
+        ProviderId = "draft",
+        AccountId = "acct",
+        ProviderName = "Draft Provider",
+        AccountLabel = "Draft Account",
+        BaseUrl = "not-a-valid-url",
+        CredentialRef = "api-key:draft:acct"
+    });
+
+    AssertTrue(!result.Success);
+    AssertEqual("api-key:draft:acct", secrets.LastReadCredentialRef);
+    AssertEqual(1, secrets.ReadCount);
+    AssertEqual("draft", result.ProviderId);
+    AssertEqual("acct", result.AccountId);
+    AssertEqual("Draft Account", result.Label);
+}
+
+static async Task ApplicationActivationWorkflowPersistsActiveSelectionTest()
+{
+    using var temp = TempDir.Create();
+    var codexHome = Path.Combine(temp.Path, ".codex");
+    Directory.CreateDirectory(codexHome);
+    await File.WriteAllTextAsync(Path.Combine(codexHome, "config.toml"), "model = \"old\"\n");
+    await File.WriteAllTextAsync(Path.Combine(codexHome, "auth.json"), "{\"auth_mode\":\"chatgpt\"}\n");
+
+    var appPaths = AppPaths.Resolve(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["USERPROFILE"] = temp.Path
+    });
+    var store = new AppConfigStore(appPaths.ConfigPath);
+    var secrets = new InMemorySecretStore();
+    await secrets.WriteSecretAsync("api-key:test:default", "sk-test");
+    var config = new AppConfig
+    {
+        Providers =
+        [
+            new ProviderDefinition
+            {
+                ProviderId = "test",
+                DisplayName = "Test API",
+                Kind = ProviderKind.OpenAiCompatible,
+                AuthMode = AuthMode.ApiKey,
+                BaseUrl = "https://example.test/v1"
+            }
+        ],
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "test",
+                AccountId = "default",
+                Label = "Default",
+                CredentialRef = "api-key:test:default"
+            }
+        ]
+    };
+
+    var workflow = new AccountActivationWorkflow(appPaths, store, secrets, secrets);
+    var result = await workflow.ActivateAsync(
+        config,
+        new CodexSelection { ProviderId = "test", AccountId = "default" },
+        new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["CODEX_HOME"] = codexHome,
+            ["USERPROFILE"] = temp.Path
+        });
+
+    AssertTrue(result.SwitchResult.ValidationPassed, result.SwitchResult.Message);
+    AssertEqual("test", result.UpdatedConfig.ActiveSelection?.ProviderId);
+    AssertEqual("default", result.UpdatedConfig.ActiveSelection?.AccountId);
+    AssertTrue(result.UpdatedConfig.Accounts.Single().LastUsedAt.HasValue);
+
+    var saved = await store.LoadAsync();
+    AssertEqual("test", saved.ActiveSelection?.ProviderId);
+    AssertTrue(saved.Accounts.Single().LastUsedAt.HasValue);
+    AssertContains(await File.ReadAllTextAsync(Path.Combine(codexHome, "config.toml")), "openai_base_url = \"https://example.test/v1\"");
+    AssertContains(await File.ReadAllTextAsync(Path.Combine(codexHome, "auth.json")), "\"OPENAI_API_KEY\": \"sk-test\"");
+}
+
+static Task ApplicationDashboardProjectionBuildsAccountCardsTest()
+{
+    var now = DateTimeOffset.Parse("2026-05-15T08:00:00Z");
+    var config = new AppConfig
+    {
+        Settings = new AppSettings
+        {
+            AccountSortMode = AccountSortMode.Usage,
+            OpenAiAccountMode = OpenAiAccountMode.AggregateGateway
+        },
+        ActiveSelection = new CodexSelection
+        {
+            ProviderId = "openai",
+            AccountId = "healthy",
+            SelectedAt = now
+        },
+        Providers =
+        [
+            new ProviderDefinition
+            {
+                ProviderId = "openai",
+                DisplayName = "OpenAI",
+                Kind = ProviderKind.OpenAiOAuth,
+                AuthMode = AuthMode.OAuth
+            },
+            new ProviderDefinition
+            {
+                ProviderId = "test",
+                DisplayName = "Test API",
+                Kind = ProviderKind.OpenAiCompatible,
+                AuthMode = AuthMode.ApiKey,
+                BaseUrl = "https://example.test/v1"
+            }
+        ],
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "test",
+                AccountId = "default",
+                Label = "Default",
+                CredentialRef = "api-key:test:default",
+                ManualOrder = 1
+            },
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "healthy",
+                Label = "Healthy",
+                Email = "user@example.test",
+                WorkspaceId = "workspace-team",
+                WorkspaceName = "Team Space",
+                QuotaScopeKey = "workspace-team",
+                Tier = AccountTier.Pro,
+                CredentialRef = "oauth:openai:healthy",
+                ManualOrder = 2,
+                FiveHourQuota = new QuotaUsageSnapshot
+                {
+                    Used = 20,
+                    Limit = 100,
+                    ResetAt = now.AddHours(1)
+                },
+                WeeklyQuota = new QuotaUsageSnapshot
+                {
+                    Used = 30,
+                    Limit = 100,
+                    ResetAt = now.AddDays(2)
+                },
+                OfficialUsageFetchedAt = now
+            },
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "reauth",
+                Label = "Needs Login",
+                CredentialRef = "oauth:openai:reauth",
+                Status = AccountStatus.NeedsReauth,
+                ManualOrder = 3
+            }
+        ]
+    };
+    var home = new CodexHomeState
+    {
+        RootPath = @"C:\Users\test\.codex",
+        ConfigPath = @"C:\Users\test\.codex\config.toml",
+        AuthPath = @"C:\Users\test\.codex\auth.json",
+        SessionsPath = @"C:\Users\test\.codex\sessions",
+        ArchivedSessionsPath = @"C:\Users\test\.codex\archived_sessions"
+    };
+    var usageDashboard = new UsageDashboard
+    {
+        Today = new UsageSummary { InputTokens = 100, OutputTokens = 50 },
+        Last7Days = new UsageSummary { InputTokens = 700, OutputTokens = 300 },
+        Last30Days = new UsageSummary { InputTokens = 3000, OutputTokens = 1000 },
+        Lifetime = new UsageSummary { InputTokens = 8000, OutputTokens = 2000 },
+        UnattributedSessions = 2,
+        Accounts =
+        [
+            new AccountUsageSummary
+            {
+                ProviderId = "openai",
+                AccountId = "healthy",
+                Today = new UsageSummary { InputTokens = 10, OutputTokens = 5 },
+                Last7Days = new UsageSummary { InputTokens = 70, OutputTokens = 30 },
+                Last30Days = new UsageSummary { InputTokens = 300, OutputTokens = 100 }
+            },
+            new AccountUsageSummary
+            {
+                ProviderId = "test",
+                AccountId = "default",
+                Today = new UsageSummary { InputTokens = 1000, OutputTokens = 1000 },
+                Last7Days = new UsageSummary { InputTokens = 7000, OutputTokens = 3000 },
+                Last30Days = new UsageSummary { InputTokens = 30000, OutputTokens = 10000 }
+            }
+        ]
+    };
+
+    var projection = new AccountDashboardProjectionService().Build(config, home, usageDashboard);
+
+    AssertContains(projection.StatusText, "openai/healthy");
+    AssertContains(projection.StatusText, home.RootPath);
+    AssertContains(projection.RoutingModeText, "OpenAI");
+    AssertContains(projection.UsageText, "150");
+    AssertContains(projection.UsageText, "2");
+
+    AssertEqual("openai", projection.Accounts[0].ProviderId);
+    AssertEqual("healthy", projection.Accounts[0].AccountId);
+    AssertTrue(projection.Accounts[0].IsActive);
+    AssertTrue(projection.Accounts[0].CanRefreshOfficialQuota);
+    AssertEqual(20, projection.Accounts[0].FiveHourUsedPercent);
+    AssertEqual("test", projection.Accounts[1].ProviderId);
+    AssertTrue(projection.Accounts[1].CanProbe);
+    AssertEqual("reauth", projection.Accounts[2].AccountId);
+    AssertTrue(projection.Accounts[2].NeedsReauthorization);
+
+    AssertTrue(projection.ActiveAccount.HasSelection);
+    AssertTrue(projection.ActiveAccount.IsOpenAi);
+    AssertTrue(projection.ActiveAccount.ShowQuotaBars);
+    AssertEqual(20, projection.ActiveAccount.FiveHourUsedPercent);
+    AssertContains(projection.ActiveAccount.Title, "user@example.test");
+    AssertContains(projection.ActiveAccount.Subtitle, "pro");
+    return Task.CompletedTask;
+}
+
+static Task ApplicationActiveSelectionResolverValidatesSelectedAccountTest()
+{
+    var config = new AppConfig
+    {
+        ActiveSelection = new CodexSelection
+        {
+            ProviderId = "openai",
+            AccountId = "acct"
+        },
+        Accounts =
+        [
+            new AccountRecord
+            {
+                ProviderId = "openai",
+                AccountId = "acct",
+                Label = "OpenAI",
+                CredentialRef = "oauth:openai:acct"
+            }
+        ]
+    };
+
+    var ready = ActiveSelectionResolver.Resolve(config);
+    AssertEqual(ActiveSelectionResolutionStatus.Ready, ready.Status);
+    AssertEqual("openai", ready.Selection?.ProviderId);
+    AssertEqual("acct", ready.Selection?.AccountId);
+
+    var missingSelection = ActiveSelectionResolver.Resolve(config with { ActiveSelection = null });
+    AssertEqual(ActiveSelectionResolutionStatus.MissingSelection, missingSelection.Status);
+    AssertTrue(missingSelection.Selection is null);
+
+    var missingAccount = ActiveSelectionResolver.Resolve(config with
+    {
+        ActiveSelection = new CodexSelection
+        {
+            ProviderId = "openai",
+            AccountId = "missing"
+        }
+    });
+    AssertEqual(ActiveSelectionResolutionStatus.MissingAccount, missingAccount.Status);
+    AssertEqual("openai", missingAccount.Selection?.ProviderId);
+    AssertEqual("missing", missingAccount.Selection?.AccountId);
+    return Task.CompletedTask;
 }
 
 static Task OpenAiOAuthUrlCanRestrictWorkspaceTest()
@@ -3267,6 +4094,37 @@ internal sealed class FakeCodexDesktopForceTerminator : ICodexDesktopForceTermin
         process.MarkExited();
         return new CodexDesktopForceTerminateResult(true);
     }
+}
+
+internal sealed class RecordingSecretStore : ISecretStore
+{
+    private readonly string _credentialRef;
+    private readonly string _secret;
+
+    public RecordingSecretStore(string credentialRef, string secret)
+    {
+        _credentialRef = credentialRef;
+        _secret = secret;
+    }
+
+    public int ReadCount { get; private set; }
+
+    public string? LastReadCredentialRef { get; private set; }
+
+    public Task WriteSecretAsync(string credentialRef, string secretValue, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<string?> ReadSecretAsync(string credentialRef, CancellationToken cancellationToken = default)
+    {
+        ReadCount++;
+        LastReadCredentialRef = credentialRef;
+        return Task.FromResult<string?>(string.Equals(credentialRef, _credentialRef, StringComparison.Ordinal)
+            ? _secret
+            : null);
+    }
+
+    public Task DeleteSecretAsync(string credentialRef, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
 }
 
 internal sealed class StubHttpMessageHandler : HttpMessageHandler

@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
-using CodexBar.Auth;
-using CodexBar.Core;
+using CodexBar.Application;
 
 namespace CodexBar.Win;
 
@@ -70,26 +69,16 @@ public partial class AddCompatibleWindow : Window
         try
         {
             ShowStatus("\u6B63\u5728\u6D4B\u8BD5\u8FDE\u63A5", "\u6B63\u5728\u63A2\u6D4B /models \u8FDE\u901A\u60C5\u51B5\u2026");
-            var provider = new ProviderDefinition
+            var result = await new CompatibleDraftProbeWorkflow().ProbeAsync(new CompatibleDraftProbeRequest
             {
                 ProviderId = string.IsNullOrWhiteSpace(ProviderIdBox.Text) ? "compatible" : ProviderIdBox.Text.Trim(),
                 CodexProviderId = string.IsNullOrWhiteSpace(CodexProviderIdBox.Text) ? "openai" : CodexProviderIdBox.Text.Trim(),
-                DisplayName = string.IsNullOrWhiteSpace(ProviderNameBox.Text) ? "Compatible API" : ProviderNameBox.Text.Trim(),
-                Kind = ProviderKind.OpenAiCompatible,
+                ProviderName = string.IsNullOrWhiteSpace(ProviderNameBox.Text) ? "Compatible API" : ProviderNameBox.Text.Trim(),
                 BaseUrl = BaseUrlBox.Text.Trim(),
-                AuthMode = AuthMode.ApiKey,
-                WireApi = WireApi.Responses,
-                SupportsMultiAccount = true
-            };
-            var account = new AccountRecord
-            {
-                ProviderId = provider.ProviderId,
                 AccountId = string.IsNullOrWhiteSpace(AccountIdBox.Text) ? "default" : AccountIdBox.Text.Trim(),
-                Label = string.IsNullOrWhiteSpace(AccountLabelBox.Text) ? "Default" : AccountLabelBox.Text.Trim(),
-                CredentialRef = "inline-probe"
-            };
-            var result = await new CompatibleProviderProbeService(new InlineSecretStore(ApiKeyBox.Password))
-                .ProbeAccountAsync(provider, account);
+                AccountLabel = string.IsNullOrWhiteSpace(AccountLabelBox.Text) ? "Default" : AccountLabelBox.Text.Trim(),
+                ApiKey = ApiKeyBox.Password
+            });
 
             var message = string.IsNullOrWhiteSpace(result.SuggestedBaseUrl)
                 ? result.Message
@@ -137,18 +126,6 @@ public partial class AddCompatibleWindow : Window
 
     private static SolidColorBrush CreateBrush(string hex)
         => new((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex)!);
-
-    private sealed class InlineSecretStore(string secret) : ISecretStore
-    {
-        public Task WriteSecretAsync(string credentialRef, string secretValue, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
-
-        public Task<string?> ReadSecretAsync(string credentialRef, CancellationToken cancellationToken = default)
-            => Task.FromResult<string?>(secret);
-
-        public Task DeleteSecretAsync(string credentialRef, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
-    }
 }
 
 public sealed record AddCompatibleResult(

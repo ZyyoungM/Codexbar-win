@@ -1,4 +1,5 @@
 using CodexBar.Auth;
+using CodexBar.Application;
 using CodexBar.CodexCompat;
 using CodexBar.Core;
 using CodexBar.Runtime;
@@ -137,16 +138,11 @@ async Task ScanAccountsAsync()
 
 async Task RefreshOpenAiUsageAsync()
 {
-    var refresh = await new OpenAiOfficialUsageService(secretStore)
-        .RefreshAsync(appConfig, TimeSpan.Zero);
-    appConfig = refresh.Config;
-    if (refresh.Changed)
-    {
-        await appConfigStore.SaveAsync(appConfig);
-    }
+    var refresh = await NewHealthRefreshWorkflow().RefreshOfficialQuotaAsync();
+    appConfig = refresh.UpdatedConfig;
 
-    Console.WriteLine($"accounts_refreshed: {refresh.AccountsRefreshed}");
-    Console.WriteLine($"failed_accounts: {refresh.FailedAccounts}");
+    Console.WriteLine($"accounts_refreshed: {refresh.OfficialAccountCount}");
+    Console.WriteLine($"failed_accounts: {refresh.OfficialFailedCount}");
     foreach (var account in appConfig.Accounts
                  .Where(account => string.Equals(account.ProviderId, "openai", StringComparison.OrdinalIgnoreCase))
                  .OrderBy(account => account.ManualOrder <= 0 ? int.MaxValue : account.ManualOrder)
@@ -162,24 +158,16 @@ async Task ProbeCompatibleAsync(string[] commandArgs)
     var options = ParseOptions(commandArgs);
     var providerId = options.GetValueOrDefault("provider-id");
     var accountId = options.GetValueOrDefault("account-id");
-    var compatibleProviderIds = appConfig.Providers
-        .Where(provider => provider.Kind == ProviderKind.OpenAiCompatible)
-        .Select(provider => provider.ProviderId)
-        .ToHashSet(StringComparer.OrdinalIgnoreCase);
-    var accounts = appConfig.Accounts
-        .Where(account => compatibleProviderIds.Contains(account.ProviderId))
-        .Where(account => string.IsNullOrWhiteSpace(providerId) || string.Equals(account.ProviderId, providerId, StringComparison.OrdinalIgnoreCase))
-        .Where(account => string.IsNullOrWhiteSpace(accountId) || string.Equals(account.AccountId, accountId, StringComparison.OrdinalIgnoreCase))
-        .ToList();
+    var probe = await NewHealthRefreshWorkflow().ProbeCompatibleApisAsync(providerId, accountId);
+    appConfig = probe.UpdatedConfig;
 
-    if (accounts.Count == 0)
+    if (probe.CompatibleProbeCount == 0)
     {
         Console.WriteLine("no compatible accounts to probe");
         return;
     }
 
-    var results = await new CompatibleProviderProbeService(secretStore).ProbeAsync(appConfig, accounts);
-    foreach (var result in results)
+    foreach (var result in probe.CompatibleProbeResults)
     {
         var status = result.StatusCode.HasValue ? $"http={result.StatusCode.Value}" : "http=(none)";
         var suggestion = string.IsNullOrWhiteSpace(result.SuggestedBaseUrl) ? "" : $" suggested_base_url={result.SuggestedBaseUrl}";
@@ -302,25 +290,9 @@ async Task ActivateAsync(string[] commandArgs)
         ProviderId = Required(options, "provider-id"),
         AccountId = Required(options, "account-id")
     };
-    var aggregateDecision = await new OpenAiAggregateGatewayService(appPaths, secretStore, homeLocator)
-        .ResolveSelectionAsync(appConfig, requestedSelection);
-    var selection = aggregateDecision.ResolvedSelection;
-
-    var transaction = new CodexStateTransaction(appPaths);
-    var service = new CodexActivationService(
-        homeLocator,
-        new CodexConfigStore(),
-        new CodexAuthStore(),
-        transaction,
-        integrityChecker,
-        secretStore,
-        secretStore);
-
-    var result = await service.ActivateAsync(appConfig, selection);
-    var journalMessage = aggregateDecision.WasRerouted
-        ? $"{aggregateDecision.Message} {result.Message}"
-        : result.Message;
-    await new SwitchJournalStore(appPaths.SwitchJournalPath).AppendAsync(result.Selection, result.ValidationPassed ? "ok" : "failed", journalMessage);
+    var activation = await new AccountActivationWorkflow(appPaths, appConfigStore, secretStore, secretStore, homeLocator)
+        .ActivateAsync(appConfig, requestedSelection);
+    var result = activation.SwitchResult;
 
     if (!result.ValidationPassed)
     {
@@ -329,22 +301,12 @@ async Task ActivateAsync(string[] commandArgs)
         return;
     }
 
-    var activatedSelection = result.Selection;
-    appConfig = appConfig with
-    {
-        ActiveSelection = activatedSelection,
-        Accounts = appConfig.Accounts
-            .Select(account => account.ProviderId == activatedSelection.ProviderId && account.AccountId == activatedSelection.AccountId
-                ? account with { LastUsedAt = DateTimeOffset.UtcNow }
-                : account)
-            .ToList()
-    };
-    await appConfigStore.SaveAsync(appConfig);
+    appConfig = activation.UpdatedConfig;
     Console.WriteLine("activated");
-    if (aggregateDecision.WasRerouted)
+    if (activation.GatewayDecision.WasRerouted)
     {
-        Console.WriteLine($"aggregate_gateway: requested {aggregateDecision.RequestedSelection.ProviderId}/{aggregateDecision.RequestedSelection.AccountId}, resolved {aggregateDecision.ResolvedSelection.ProviderId}/{aggregateDecision.ResolvedSelection.AccountId}");
-        Console.WriteLine($"aggregate_gateway_message: {aggregateDecision.Message}");
+        Console.WriteLine($"aggregate_gateway: requested {activation.GatewayDecision.RequestedSelection.ProviderId}/{activation.GatewayDecision.RequestedSelection.AccountId}, resolved {activation.GatewayDecision.ResolvedSelection.ProviderId}/{activation.GatewayDecision.ResolvedSelection.AccountId}");
+        Console.WriteLine($"aggregate_gateway_message: {activation.GatewayDecision.Message}");
     }
 
     var launchEnvironment = await CodexLaunchEnvironmentBuilder.BuildAsync(appConfig, secretStore);
@@ -363,6 +325,12 @@ async Task ActivateAsync(string[] commandArgs)
     Console.Error.WriteLine($"warning: activated, but failed to launch Codex: {launchResult.Message}");
 }
 
+AccountHealthRefreshWorkflow NewHealthRefreshWorkflow()
+    => new(appConfigStore, secretStore, secretStore);
+
+GatewayResolutionWorkflow NewGatewayResolutionWorkflow()
+    => new(appPaths, secretStore, homeLocator);
+
 async Task ResolveOpenAiAsync(string[] commandArgs)
 {
     var options = ParseOptions(commandArgs);
@@ -377,12 +345,11 @@ async Task ResolveOpenAiAsync(string[] commandArgs)
         throw new ArgumentException("No OpenAI account was found. Add at least one OAuth account first.");
     }
 
-    var decision = await new OpenAiAggregateGatewayService(appPaths, secretStore, homeLocator)
-        .ResolveSelectionAsync(appConfig, new CodexSelection
-        {
-            ProviderId = providerId,
-            AccountId = requestedAccountId
-        });
+    var decision = await NewGatewayResolutionWorkflow().ResolveAsync(appConfig, new CodexSelection
+    {
+        ProviderId = providerId,
+        AccountId = requestedAccountId
+    });
 
     Console.WriteLine($"requested: {decision.RequestedSelection.ProviderId}/{decision.RequestedSelection.AccountId}");
     Console.WriteLine($"resolved: {decision.ResolvedSelection.ProviderId}/{decision.ResolvedSelection.AccountId}");
